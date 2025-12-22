@@ -274,8 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = "✅ Партия $batch_number зарегистрирована.";
             $message_type = 'success';
             $current_step = 1;
-
-
+        }
     } catch (Exception $e) {
         $message = "❌ " . $e->getMessage();
         $message_type = 'error';

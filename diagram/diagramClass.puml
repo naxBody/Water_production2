@@ -1,0 +1,72 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam wrapWidth 200
+
+package "Frontend" {
+  class Index {
+    +renderBatchesReadyForShipment()
+    +showSystemStatus()
+  }
+
+  class Production {
+    +renderCurrentStep(int step)
+    +renderStageForm(int step, context)
+    +handleUserInput()
+  }
+
+  class Shipments {
+    +listAllShipments()
+    +showShipmentDetails(int id)
+  }
+
+  class Archive {
+    +searchBatchesByDate()
+    +showBatchHistory()
+  }
+
+  class Reports {
+    +generateComplianceReport()
+    +exportToPDF()
+  }
+}
+
+package "Backend" {
+  class ProductionController {
+    +handleRawWaterTest(data)
+    +handleWaterTreatment(data)
+    +handleQualityControl(data)
+    +handleBatchRegistration(data)
+    +handleShipment(data)
+  }
+
+  class ValidationService {
+    +validateSanitaryConclusion(sourceId): bool
+    +validateWaterStandards(test): bool
+  }
+
+  class DataManager {
+    +getBatchesReadyForShipment(): array
+    +getProductionContext(): array
+    +getAllShipments(): array
+    +getBatchHistory(): array
+  }
+
+  class DatabaseManager {
+    +query(sql): array
+    +execute(sql, params): bool
+  }
+}
+
+' Связи: Frontend → Backend
+Index --> DataManager : Запрашивает партии
+Production --> ProductionController : Отправляет данные этапа
+Production --> DataManager : Получает контекст
+Shipments --> DataManager : Получает список отгрузок
+Archive --> DataManager : Получает архив
+Reports --> DataManager : Генерирует отчёты
+
+' Связи внутри Backend
+ProductionController --> ValidationService
+ProductionController --> DataManager
+DataManager --> DatabaseManager
+@enduml

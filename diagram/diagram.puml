@@ -1,0 +1,40 @@
+@startuml
+title Этап 1: Предварительный анализ воды
+
+actor "Пользователь" as User
+participant "Страница production.php" as UI
+participant "Сервер (PHP)" as Server
+participant "База данных (MySQL)" as DB
+
+User -> UI : Открывает production.php
+UI -> Server : Запрашивает текущий этап и контекст
+Server -> DB : SELECT raw_water_tests WHERE is_approved_for_treatment = 1 AND нет очистки
+DB --> Server : Возвращает пусто → текущий этап = 1
+Server --> UI : Отображает форму Этапа 1
+
+User -> UI : Заполняет форму (источник, оператор, показатели) и нажимает «Сохранить»
+UI -> Server : POST /production.php с данными формы
+
+Server -> DB : SELECT sanitary_conclusion_valid_until FROM water_sources WHERE id = ?
+DB --> Server : Возвращает дату окончания санзаключения
+
+alt Санзаключение истекло
+  Server --> UI : Возвращает ошибку: "Срок санзаключения истёк!"
+  UI --> User : Показывает сообщение ❌
+else Санзаключение актуально
+  Server -> Server : Проверяет микробиологию и химпоказатели по СТБ 1575-2013
+  Server -> Server : Принимает решение: $is_approved = true/false
+
+  Server -> DB : INSERT INTO raw_water_tests (...) VALUES (...)
+  DB --> Server : Подтверждает вставку
+
+  alt Проба одобрена
+    Server --> UI : Возвращает сообщение: "✅ Проба одобрена для очистки."
+    UI --> User : Показывает успех, обновляет прогресс-бар → Этап 2 активен
+  else Проба забракована
+    Server --> UI : Возвращает сообщение: "❌ Проба забракована: нарушены нормы."
+    UI --> User : Показывает ошибку, остаётся на Этапе 1
+  end
+end
+
+@enduml

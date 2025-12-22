@@ -40,67 +40,43 @@ foreach ($operators as $op) {
 $current_step = 1;
 $context = [];
 
-// Этап 1 → 2: есть одобренные пробы без очистки?
-$stmt = $pdo->query("
-    SELECT r.id, r.sampled_at, ws.name AS source_name, o.full_name AS sampled_by_name
+// === АВТОМАТИЧЕСКОЕ ЗАПОЛНЕНИЕ ПРЕДВАРИТЕЛЬНЫХ ЗНАЧЕНИЙ ===
+// Получим последнюю запись из базы для автозаполнения
+$last_raw_test = $pdo->query("
+    SELECT r.*, ws.name AS source_name, o.full_name AS sampled_by_name
     FROM raw_water_tests r
     JOIN water_sources ws ON r.source_id = ws.id
-    LEFT JOIN operators o ON r.sampled_by = o.full_name -- временно, пока не переделали сохранение
-    WHERE r.is_approved_for_treatment = 1
-    AND r.id NOT IN (SELECT raw_test_id FROM water_treatments)
+    LEFT JOIN operators o ON r.sampled_by = o.full_name
     ORDER BY r.sampled_at DESC LIMIT 1
-");
-if ($row = $stmt->fetch()) {
-    $current_step = 2;
-    $context['raw_test'] = $row;
-}
+")->fetch();
 
-// Этап 2 → 3: есть очистки без анализа?
-$stmt = $pdo->query("
-    SELECT t.id, t.started_at, ws.name AS source_name, o.full_name AS operator_name
+$last_treatment = $pdo->query("
+    SELECT t.*, ws.name AS source_name, o.full_name AS operator_name
     FROM water_treatments t
     JOIN raw_water_tests r ON t.raw_test_id = r.id
     JOIN water_sources ws ON r.source_id = ws.id
     LEFT JOIN operators o ON t.operator = o.full_name
-    WHERE t.id NOT IN (SELECT treatment_id FROM treated_water_tests)
     ORDER BY t.started_at DESC LIMIT 1
-");
-if ($row = $stmt->fetch()) {
-    $current_step = 3;
-    $context['treatment'] = $row;
-}
+")->fetch();
 
-// Этап 3 → 4: есть годные анализы без партии?
-$stmt = $pdo->query("
-    SELECT tw.id, tw.tested_at, ws.name AS source_name, o.full_name AS tested_by_name
+$last_analysis = $pdo->query("
+    SELECT tw.*, ws.name AS source_name, o.full_name AS tested_by_name
     FROM treated_water_tests tw
     JOIN water_treatments t ON tw.treatment_id = t.id
     JOIN raw_water_tests r ON t.raw_test_id = r.id
     JOIN water_sources ws ON r.source_id = ws.id
     LEFT JOIN operators o ON tw.tested_by = o.full_name
-    WHERE tw.is_compliant = 1
-    AND tw.id NOT IN (SELECT treated_test_id FROM batches)
     ORDER BY tw.tested_at DESC LIMIT 1
-");
-if ($row = $stmt->fetch()) {
-    $current_step = 4;
-    $context['analysis'] = $row;
-}
+")->fetch();
 
-// Этап 4 → 5: есть партии, готовые к отгрузке?
-$stmt = $pdo->query("
-    SELECT b.id, b.batch_number, b.remaining_bottles, wb.name AS brand, bt.volume_l, bt.material, o.full_name AS operator_name
+$last_batch = $pdo->query("
+    SELECT b.*, wb.name AS brand_name, bt.volume_l, bt.material, o.full_name AS operator_name
     FROM batches b
     JOIN water_brands wb ON b.brand_id = wb.id
     JOIN bottle_types bt ON b.bottle_type_id = bt.id
     LEFT JOIN operators o ON b.operator_name = o.full_name
-    WHERE b.status = 'Годна к реализации'
     ORDER BY b.bottling_datetime DESC LIMIT 1
-");
-if ($row = $stmt->fetch()) {
-    $current_step = 5;
-    $context['batch'] = $row;
-}
+")->fetch();
 
 // === ОБРАБОТКА ФОРМ ===
 $message = '';
@@ -297,39 +273,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $message = "✅ Партия $batch_number зарегистрирована.";
             $message_type = 'success';
-            $current_step = 5;
-
-        } elseif ($_POST['step'] == 5) {
-            $batch_id = $context['batch']['id'] ?? null;
-            if (!$batch_id) throw new Exception('Нет партии для отгрузки.');
-
-            $client_id = (int)$_POST['client_id'];
-            $bottles = (int)$_POST['bottles_shipped'];
-            $waybill = trim($_POST['waybill_number']);
-            $shipped_by_id = (int)$_POST['shipped_by']; // ID ответственного
-            $shipped_by = $pdo->query("SELECT full_name FROM operators WHERE id = $shipped_by_id AND role = 'shipper'")->fetchColumn();
-            if (!$shipped_by) throw new Exception('Выберите корректного ответственного за отгрузку.');
-            $remaining = $context['batch']['remaining_bottles'] ?? 0;
-
-            if ($client_id <= 0 || $bottles <= 0 || $bottles > $remaining || !$waybill || !$shipped_by) {
-                throw new Exception('Проверьте данные отгрузки.');
-            }
-
-            $pdo->prepare("
-                INSERT INTO shipments (batch_id, client_id, shipment_date, bottles_shipped, waybill_number, shipped_by)
-                VALUES (?, ?, CURDATE(), ?, ?, ?)
-            ")->execute([$batch_id, $client_id, $bottles, $waybill, $shipped_by]);
-
-            $pdo->prepare("UPDATE batches SET remaining_bottles = remaining_bottles - ? WHERE id = ?")->execute([$bottles, $batch_id]);
-            if ($remaining - $bottles == 0) {
-                $pdo->prepare("UPDATE batches SET status = 'Полностью реализована' WHERE id = ?")->execute([$batch_id]);
-            }
-
-            $message = '✅ Отгрузка оформлена.';
-            $message_type = 'success';
             $current_step = 1;
 
-        }
+
     } catch (Exception $e) {
         $message = "❌ " . $e->getMessage();
         $message_type = 'error';
@@ -428,8 +374,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ['Предварительный анализ', 'fa-vial'],
                     ['Очистка воды', 'fa-filter'],
                     ['Лабораторный контроль', 'fa-flask'],
-                    ['Регистрация партии', 'fa-box'],
-                    ['Отгрузка', 'fa-truck']
+                    ['Регистрация партии', 'fa-box']
                 ];
                 foreach ($steps as $index => $step): ?>
                     <div class="stage <?= 
@@ -460,7 +405,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <select name="source_id" id="source_id" required>
                             <option value="">Выберите источник</option>
                             <?php foreach ($sources as $src): ?>
-                                <option value="<?= $src['id'] ?>"><?= htmlspecialchars($src['name']) ?></option>
+                                <option value="<?= $src['id'] ?>" <?= isset($last_raw_test['source_id']) && $last_raw_test['source_id'] == $src['id'] ? 'selected' : '' ?>><?= htmlspecialchars($src['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                         <div class="field-hint">Только источники с действующим санитарным заключением.</div>
@@ -470,7 +415,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <select name="sampled_by" required>
                             <option value="">Выберите оператора</option>
                             <?php foreach ($operators_by_role['operator'] as $op): ?>
-                                <option value="<?= $op['id'] ?>"><?= htmlspecialchars($op['full_name']) ?></option>
+                                <option value="<?= $op['id'] ?>" <?= isset($last_raw_test['sampled_by']) && $last_raw_test['sampled_by'] == $op['full_name'] ? 'selected' : '' ?>><?= htmlspecialchars($op['full_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -479,33 +424,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
                             <div>
                                 <label>Запах (0–2)</label>
-                                <input type="number" name="odor_rating" min="0" max="2" value="0">
+                                <input type="number" name="odor_rating" min="0" max="2" value="<?= $last_raw_test['odor_rating'] ?? 0 ?>">
                             </div>
                             <div>
                                 <label>Привкус (0–2)</label>
-                                <input type="number" name="taste_rating" min="0" max="2" value="0">
+                                <input type="number" name="taste_rating" min="0" max="2" value="<?= $last_raw_test['taste_rating'] ?? 0 ?>">
                             </div>
                             <div>
                                 <label>Цветность (°)</label>
-                                <input type="number" name="color_degrees" min="0" value="10">
+                                <input type="number" name="color_degrees" min="0" value="<?= $last_raw_test['color_degrees'] ?? 10 ?>">
                             </div>
                             <div>
                                 <label>Мутность (ЕМФ)</label>
-                                <input type="number" name="turbidity_emf" min="0" step="0.1" value="0.5">
+                                <input type="number" name="turbidity_emf" min="0" step="0.1" value="<?= $last_raw_test['turbidity_emf'] ?? 0.5 ?>">
                             </div>
                         </div>
                     </div>
                     <div class="form-group">
                         <label>Физико-химические показатели</label>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <div><label>pH</label><input type="number" name="ph" step="0.01" value="7.2"></div>
-                            <div><label>Жёсткость (ммоль/л)</label><input type="number" name="hardness_mmol" step="0.1" value="4.0"></div>
-                            <div><label>Сухой остаток (мг/л)</label><input type="number" name="dry_residue_mg_l" value="500"></div>
-                            <div><label>Железо (мг/л)</label><input type="number" name="iron_mg_l" step="0.001" value="0.1"></div>
-                            <div><label>Нитраты (мг/л)</label><input type="number" name="nitrates_mg_l" step="0.1" value="20.0"></div>
-                            <div><label>Фториды (мг/л)</label><input type="number" name="fluorides_mg_l" step="0.01" value="1.0"></div>
-                            <div><label>Хлориды (мг/л)</label><input type="number" name="chlorides_mg_l" value="100"></div>
-                            <div><label>Сульфаты (мг/л)</label><input type="number" name="sulfates_mg_l" value="150"></div>
+                            <div><label>pH</label><input type="number" name="ph" step="0.01" value="<?= $last_raw_test['ph'] ?? 7.2 ?>"></div>
+                            <div><label>Жёсткость (ммоль/л)</label><input type="number" name="hardness_mmol" step="0.1" value="<?= $last_raw_test['hardness_mmol'] ?? 4.0 ?>"></div>
+                            <div><label>Сухой остаток (мг/л)</label><input type="number" name="dry_residue_mg_l" value="<?= $last_raw_test['dry_residue_mg_l'] ?? 500 ?>"></div>
+                            <div><label>Железо (мг/л)</label><input type="number" name="iron_mg_l" step="0.001" value="<?= $last_raw_test['iron_mg_l'] ?? 0.1 ?>"></div>
+                            <div><label>Нитраты (мг/л)</label><input type="number" name="nitrates_mg_l" step="0.1" value="<?= $last_raw_test['nitrates_mg_l'] ?? 20.0 ?>"></div>
+                            <div><label>Фториды (мг/л)</label><input type="number" name="fluorides_mg_l" step="0.01" value="<?= $last_raw_test['fluorides_mg_l'] ?? 1.0 ?>"></div>
+                            <div><label>Хлориды (мг/л)</label><input type="number" name="chlorides_mg_l" value="<?= $last_raw_test['chlorides_mg_l'] ?? 100 ?>"></div>
+                            <div><label>Сульфаты (мг/л)</label><input type="number" name="sulfates_mg_l" value="<?= $last_raw_test['sulfates_mg_l'] ?? 150 ?>"></div>
                         </div>
                     </div>
                     <div class="form-group">
@@ -520,8 +465,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="form-group">
                         <label>Микробное число</label>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <div><label>ОМЧ (КОЕ/мл)</label><input type="number" name="omch_cfu_ml" value="50"></div>
-                            <div><label>Дрожжи/плесени (КОЕ/мл)</label><input type="number" name="yeast_mold_cfu_ml" value="20"></div>
+                            <div><label>ОМЧ (КОЕ/мл)</label><input type="number" name="omch_cfu_ml" value="<?= $last_raw_test['omch_cfu_ml'] ?? 50 ?>"></div>
+                            <div><label>Дрожжи/плесени (КОЕ/мл)</label><input type="number" name="yeast_mold_cfu_ml" value="<?= $last_raw_test['yeast_mold_cfu_ml'] ?? 20 ?>"></div>
                         </div>
                     </div>
                     <button type="submit" class="btn"><i class="fas fa-save"></i> Сохранить анализ</button>
@@ -534,7 +479,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="step" value="2">
                     <div class="form-group">
                         <label for="volume_treated_l">Объём после очистки (л) *</label>
-                        <input type="number" name="volume_treated_l" required min="1" value="10000">
+                        <input type="number" name="volume_treated_l" required min="1" value="<?= $last_treatment['volume_treated_l'] ?? 10000 ?>">
                     </div>
                     <div class="form-group">
                         <label>Методы очистки</label>
@@ -551,7 +496,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <select name="operator" required>
                             <option value="">Выберите оператора</option>
                             <?php foreach ($operators_by_role['operator'] as $op): ?>
-                                <option value="<?= $op['id'] ?>"><?= htmlspecialchars($op['full_name']) ?></option>
+                                <option value="<?= $op['id'] ?>" <?= isset($last_treatment['operator']) && $last_treatment['operator'] == $op['full_name'] ? 'selected' : '' ?>><?= htmlspecialchars($op['full_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -568,7 +513,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <select name="tested_by" required>
                             <option value="">Выберите лаборанта</option>
                             <?php foreach ($operators_by_role['lab_analyst'] as $op): ?>
-                                <option value="<?= $op['id'] ?>"><?= htmlspecialchars($op['full_name']) ?></option>
+                                <option value="<?= $op['id'] ?>" <?= isset($last_analysis['tested_by']) && $last_analysis['tested_by'] == $op['full_name'] ? 'selected' : '' ?>><?= htmlspecialchars($op['full_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -608,12 +553,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="form-group">
                         <label>Физико-химия</label>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <div><label>pH</label><input type="number" name="ph" step="0.01" value="7.2"></div>
-                            <div><label>Жёсткость (ммоль/л)</label><input type="number" name="hardness" step="0.1" value="4.0"></div>
-                            <div><label>Сухой остаток (мг/л)</label><input type="number" name="dry_residue" value="500"></div>
-                            <div><label>Железо (мг/л)</label><input type="number" name="iron" step="0.001" value="0.1"></div>
-                            <div><label>Нитраты (мг/л)</label><input type="number" name="nitrates" step="0.1" value="20.0"></div>
-                            <div><label>Фториды (мг/л)</label><input type="number" name="fluorides" step="0.01" value="1.0"></div>
+                            <div><label>pH</label><input type="number" name="ph" step="0.01" value="<?= $last_analysis['ph'] ?? 7.2 ?>"></div>
+                            <div><label>Жёсткость (ммоль/л)</label><input type="number" name="hardness" step="0.1" value="<?= $last_analysis['hardness_mmol'] ?? 4.0 ?>"></div>
+                            <div><label>Сухой остаток (мг/л)</label><input type="number" name="dry_residue" value="<?= $last_analysis['dry_residue_mg_l'] ?? 500 ?>"></div>
+                            <div><label>Железо (мг/л)</label><input type="number" name="iron" step="0.001" value="<?= $last_analysis['iron_mg_l'] ?? 0.1 ?>"></div>
+                            <div><label>Нитраты (мг/л)</label><input type="number" name="nitrates" step="0.1" value="<?= $last_analysis['nitrates_mg_l'] ?? 20.0 ?>"></div>
+                            <div><label>Фториды (мг/л)</label><input type="number" name="fluorides" step="0.01" value="<?= $last_analysis['fluorides_mg_l'] ?? 1.0 ?>"></div>
                         </div>
                     </div>
                     <div class="form-group">
@@ -627,8 +572,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="form-group">
                         <label>Микробное число</label>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <div><label>ОМЧ (КОЕ/мл)</label><input type="number" name="omch" value="50"></div>
-                            <div><label>Дрожжи/плесени (КОЕ/мл)</label><input type="number" name="yeast" value="20"></div>
+                            <div><label>ОМЧ (КОЕ/мл)</label><input type="number" name="omch" value="<?= $last_analysis['omch_cfu_ml'] ?? 50 ?>"></div>
+                            <div><label>Дрожжи/плесени (КОЕ/мл)</label><input type="number" name="yeast" value="<?= $last_analysis['yeast_mold_cfu_ml'] ?? 20 ?>"></div>
                         </div>
                     </div>
                     <button type="submit" class="btn"><i class="fas fa-save"></i> Сохранить анализ</button>
@@ -643,7 +588,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <label for="brand_id">Марка воды *</label>
                         <select name="brand_id" required>
                             <?php foreach ($brands as $b): ?>
-                                <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['name']) ?></option>
+                                <option value="<?= $b['id'] ?>" <?= isset($last_batch['brand_id']) && $last_batch['brand_id'] == $b['id'] ? 'selected' : '' ?>><?= htmlspecialchars($b['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -651,7 +596,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <label for="bottle_id">Тип тары *</label>
                         <select name="bottle_id" required>
                             <?php foreach ($bottle_types as $bt): ?>
-                                <option value="<?= $bt['id'] ?>"><?= htmlspecialchars($bt['volume_l']) ?> л (<?= htmlspecialchars($bt['material']) ?>)</option>
+                                <option value="<?= $bt['id'] ?>" <?= isset($last_batch['bottle_type_id']) && $last_batch['bottle_type_id'] == $bt['id'] ? 'selected' : '' ?>><?= htmlspecialchars($bt['volume_l']) ?> л (<?= htmlspecialchars($bt['material']) ?>)</option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -659,57 +604,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <label for="line_id">Производственная линия *</label>
                         <select name="line_id" required>
                             <?php foreach ($lines as $l): ?>
-                                <option value="<?= $l['id'] ?>"><?= htmlspecialchars($l['name']) ?></option>
+                                <option value="<?= $l['id'] ?>" <?= isset($last_batch['production_line_id']) && $last_batch['production_line_id'] == $l['id'] ? 'selected' : '' ?>><?= htmlspecialchars($l['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="form-group">
                         <label for="total_bottles">Количество бутылок *</label>
-                        <input type="number" name="total_bottles" required min="1" value="10000">
+                        <input type="number" name="total_bottles" required min="1" value="<?= $last_batch['total_bottles'] ?? 10000 ?>">
                     </div>
                     <div class="form-group">
                         <label for="operator">ФИО оператора *</label>
                         <select name="operator" required>
                             <option value="">Выберите оператора</option>
                             <?php foreach ($operators_by_role['operator'] as $op): ?>
-                                <option value="<?= $op['id'] ?>"><?= htmlspecialchars($op['full_name']) ?></option>
+                                <option value="<?= $op['id'] ?>" <?= isset($last_batch['operator_name']) && $last_batch['operator_name'] == $op['full_name'] ? 'selected' : '' ?>><?= htmlspecialchars($op['full_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <button type="submit" class="btn"><i class="fas fa-save"></i> Зарегистрировать партию</button>
-                </form>
-
-            <?php elseif ($current_step == 5): ?>
-                <h2 class="form-title"><i class="fas fa-truck"></i> Этап 5: Отгрузка продукции</h2>
-                <p class="form-desc">Партия <strong><?= htmlspecialchars($context['batch']['batch_number']) ?></strong> (<?= htmlspecialchars($context['batch']['brand']) ?>, <?= $context['batch']['volume_l'] ?> л) готова к отгрузке.</p>
-                <form method="POST">
-                    <input type="hidden" name="step" value="5">
-                    <div class="form-group">
-                        <label for="client_id">Контрагент *</label>
-                        <select name="client_id" required>
-                            <?php foreach ($clients as $c): ?>
-                                <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="bottles_shipped">Количество к отгрузке *</label>
-                        <input type="number" name="bottles_shipped" required min="1" max="<?= $context['batch']['remaining_bottles'] ?>" value="<?= $context['batch']['remaining_bottles'] ?>">
-                    </div>
-                    <div class="form-group">
-                        <label for="waybill_number">Номер ТТН *</label>
-                        <input type="text" name="waybill_number" required placeholder="ТТН-2025-0001">
-                    </div>
-                    <div class="form-group">
-                        <label for="shipped_by">ФИО ответственного *</label>
-                        <select name="shipped_by" required>
-                            <option value="">Выберите ответственного</option>
-                            <?php foreach ($operators_by_role['shipper'] as $op): ?>
-                                <option value="<?= $op['id'] ?>"><?= htmlspecialchars($op['full_name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn"><i class="fas fa-truck"></i> Оформить отгрузку</button>
                 </form>
 
             <?php endif; ?>

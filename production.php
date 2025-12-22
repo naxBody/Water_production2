@@ -258,20 +258,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     odor, taste, transparency, color,
                     ph, hardness_mmol, dry_residue_mg_l, iron_mg_l, nitrates_mg_l, fluorides_mg_l,
                     omch_cfu_ml, coliforms_detected, thermotolerant_coliforms_detected, pseudomonas_detected,
-                    yeast_mold_cfu_ml, is_compliant, notes
+                    yeast_mold_cfu_ml, notes
                 ) VALUES (
                     ?, NOW(), ?,
                     ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, ?,
-                    ?, ?, ?
+                    ?, ?
                 )
             ")->execute([
                 $treatment_id, $lab_operator,
                 $odor, $taste, $transparency, $color,
                 $ph, $hardness, $dry_residue, $iron, $nitrates, $fluorides,
                 $omch, $coliforms, $thermotolerant, $pseudomonas,
-                $yeast, $is_compliant, null
+                $yeast, null
             ]);
 
             // Get the ID of the newly created analysis

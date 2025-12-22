@@ -292,99 +292,127 @@ $main_alert = $alerts[0];
         
 
         <!-- Основной контент -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-            <div>
-                <!-- Все готовые партии -->
-                <div class="section">
-                    <div class="section-title"><i class="fas fa-box-open"></i> Партии, готовые к отгрузке</div>
-                    <?php 
-                    // Обновляем запрос, чтобы получить больше информации о партиях
-                    $detailed_ready_batches = $pdo->query("
-                        SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, wb.name AS brand,
-                               DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
-                               DATEDIFF(DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH), CURDATE()) AS days_to_expiry
-                        FROM batches b
-                        JOIN water_brands wb ON b.brand_id = wb.id
-                        WHERE b.status = 'Годна к реализации' AND b.remaining_bottles > 0
-                        ORDER BY b.bottling_datetime DESC
-                        LIMIT 5
-                    ")->fetchAll();
+        <!-- Все партии (готовые к отгрузке, требующие анализа, забракованные) -->
+        <div class="section">
+            <div class="section-title"><i class="fas fa-boxes"></i> Состояние партий</div>
+            
+            <?php 
+            // Обновляем запрос, чтобы получить партии разных статусов
+            $all_batches = $pdo->query("
+                SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, b.status, wb.name AS brand,
+                       DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
+                       DATEDIFF(DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH), CURDATE()) AS days_to_expiry
+                FROM batches b
+                JOIN water_brands wb ON b.brand_id = wb.id
+                WHERE b.status IN ('Годна к реализации', 'Ожидает анализа', 'Брак')
+                ORDER BY b.bottling_datetime DESC
+            ")->fetchAll();
+            ?>
+            
+            <?php if ($all_batches): ?>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Партия</th>
+                        <th>Марка</th>
+                        <th>Статус</th>
+                        <th>Остаток</th>
+                        <th>Дата розлива</th>
+                        <th>Срок годности</th>
+                        <th>Действие</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($all_batches as $b): 
+                        $days_to_expiry = $b['days_to_expiry'];
+                        $expiry_class = '';
+                        if ($days_to_expiry <= 7) {
+                            $expiry_class = 'status--danger';
+                        } elseif ($days_to_expiry <= 30) {
+                            $expiry_class = 'status--warning';
+                        } else {
+                            $expiry_class = 'status--good';
+                        }
+                        
+                        $status_class = '';
+                        $status_text = '';
+                        switch($b['status']) {
+                            case 'Годна к реализации':
+                                $status_class = 'status--good';
+                                $status_text = 'Годна к реализации';
+                                break;
+                            case 'Ожидает анализа':
+                                $status_class = 'status--warning';
+                                $status_text = 'Ожидает анализа';
+                                break;
+                            case 'Брак':
+                                $status_class = 'status--danger';
+                                $status_text = 'Брак';
+                                break;
+                            default:
+                                $status_class = '';
+                                $status_text = $b['status'];
+                        }
                     ?>
-                    <?php if ($detailed_ready_batches): ?>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Партия</th>
-                                <th>Марка</th>
-                                <th>Остаток</th>
-                                <th>Дата розлива</th>
-                                <th>Срок годности</th>
-                                <th>Действие</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($detailed_ready_batches as $b): 
-                                $days_to_expiry = $b['days_to_expiry'];
-                                $expiry_class = '';
-                                if ($days_to_expiry <= 7) {
-                                    $expiry_class = 'status--danger';
-                                } elseif ($days_to_expiry <= 30) {
-                                    $expiry_class = 'status--warning';
-                                } else {
-                                    $expiry_class = 'status--good';
-                                }
-                            ?>
-                            <tr>
-                                <td><?= htmlspecialchars($b['batch_number']) ?></td>
-                                <td><?= htmlspecialchars($b['brand']) ?></td>
-                                <td><?= number_format($b['remaining_bottles'], 0, ' ', ' ') ?></td>
-                                <td><?= date('d.m.Y', strtotime($b['bottling_datetime'])) ?></td>
-                                <td><span class="status-tag <?= $expiry_class ?>"><?= date('d.m.Y', strtotime($b['expiry_date'])) ?> (<?= $days_to_expiry ?> дн.)</span></td>
-                                <td><a href="shipments.php?batch_id=<?= $b['id'] ?>" class="batch-link">Оформить отгрузку</a></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                    <?php else: ?>
-                    <p class="empty">Нет партий, готовых к отгрузке.</p>
-                    <?php endif; ?>
-                </div>
+                    <tr>
+                        <td><?= htmlspecialchars($b['batch_number']) ?></td>
+                        <td><?= htmlspecialchars($b['brand']) ?></td>
+                        <td><span class="status-tag <?= $status_class ?>"><?= $status_text ?></span></td>
+                        <td><?= number_format($b['remaining_bottles'], 0, ' ', ' ') ?></td>
+                        <td><?= date('d.m.Y', strtotime($b['bottling_datetime'])) ?></td>
+                        <td><span class="status-tag <?= $expiry_class ?>"><?= date('d.m.Y', strtotime($b['expiry_date'])) ?> (<?= $days_to_expiry ?> дн.)</span></td>
+                        <td>
+                            <?php if ($b['status'] === 'Годна к реализации' && $b['remaining_bottles'] > 0): ?>
+                                <a href="shipments.php?batch_id=<?= $b['id'] ?>" class="batch-link">Оформить отгрузку</a>
+                            <?php elseif ($b['status'] === 'Ожидает анализа'): ?>
+                                <a href="production.php?batch_id=<?= $b['id'] ?>" class="batch-link">Анализ партии</a>
+                            <?php elseif ($b['status'] === 'Брак'): ?>
+                                <a href="edit_batch.php?batch_id=<?= $b['id'] ?>" class="batch-link">Исправить брак</a>
+                            <?php else: ?>
+                                —
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php else: ?>
+            <p class="empty">Нет партий для отображения.</p>
+            <?php endif; ?>
+        </div>
 
-                <!-- Последние отгрузки -->
-                <div class="section">
-                    <div class="section-title"><i class="fas fa-truck"></i> Последние отгрузки</div>
-                    <?php if ($recent_shipments): ?>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Партия</th>
-                                <th>Клиент</th>
-                                <th>Бутылок</th>
-                                <th>Дата</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($recent_shipments as $s): ?>
-                            <tr>
-                                <td><?= htmlspecialchars($s['batch_number']) ?></td>
-                                <td><?= htmlspecialchars($s['client']) ?></td>
-                                <td><?= number_format($s['bottles_shipped'], 0, ' ', ' ') ?></td>
-                                <td><?= date('d.m.Y', strtotime($s['shipment_date'])) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                    <?php else: ?>
-                    <p class="empty">Отгрузок пока нет.</p>
-                    <?php endif; ?>
-                </div>
-            </div>
+        <!-- Последние отгрузки -->
+        <div class="section">
+            <div class="section-title"><i class="fas fa-truck"></i> Последние отгрузки</div>
+            <?php if ($recent_shipments): ?>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Партия</th>
+                        <th>Клиент</th>
+                        <th>Бутылок</th>
+                        <th>Дата</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($recent_shipments as $s): ?>
+                    <tr>
+                        <td><?= htmlspecialchars($s['batch_number']) ?></td>
+                        <td><?= htmlspecialchars($s['client']) ?></td>
+                        <td><?= number_format($s['bottles_shipped'], 0, ' ', ' ') ?></td>
+                        <td><?= date('d.m.Y', strtotime($s['shipment_date'])) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php else: ?>
+            <p class="empty">Отгрузок пока нет.</p>
+            <?php endif; ?>
+        </div>
 
-            <!-- Правая колонка: информация -->
-            <div>
-                <!-- Критическая информация -->
-                <div class="section">
-                    <div class="section-title"><i class="fas fa-exclamation-triangle"></i> Критические вопросы</div>
+        <!-- Критическая информация -->
+        <div class="section">
+            <div class="section-title"><i class="fas fa-exclamation-triangle"></i> Критические вопросы и важные предупреждения</div>
                     
                     <?php
                     // Проверяем наличие критических ситуаций

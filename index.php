@@ -396,17 +396,62 @@ $main_alert = $alerts[0];
                 <?php endif; ?>
 
                 <!-- Причины брака -->
-                <?php if (!empty($brake_reasons)): ?>
                 <div class="section">
                     <div class="section-title"><i class="fas fa-ban"></i> Анализ брака</div>
-                    <?php foreach ($brake_reasons as $r): ?>
-                    <div class="info-block" style="border-left-color: var(--danger);">
-                        <div class="info-title"><?= htmlspecialchars($r['reason']) ?></div>
-                        <div class="info-content"><?= $r['count'] ?> случаев</div>
-                    </div>
-                    <?php endforeach; ?>
+                    <?php if (!empty($brake_reasons)): ?>
+                        <?php foreach ($brake_reasons as $r): ?>
+                        <div class="info-block" style="border-left-color: var(--danger);">
+                            <div class="info-title"><?= htmlspecialchars($r['reason']) ?></div>
+                            <div class="info-content"><?= $r['count'] ?> случаев</div>
+                        </div>
+                        <?php endforeach; ?>
+                        
+                        <!-- Дополнительная информация по браку -->
+                        <div class="info-block" style="border-left-color: var(--danger);">
+                            <div class="info-title">Общая статистика брака</div>
+                            <div class="info-content">
+                                <?php
+                                $total_rejected_batches = $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Брак'")->fetchColumn();
+                                $last_rejected_batch = $pdo->query("
+                                    SELECT b.batch_number, b.created_at, tw.coliforms_detected, tw.thermotolerant_coliforms_detected, 
+                                           tw.pseudomonas_detected, tw.nitrates_mg_l, tw.iron_mg_l, tw.ph, tw.transparency, tw.color
+                                    FROM batches b
+                                    JOIN treated_water_tests tw ON b.treated_test_id = tw.id
+                                    WHERE b.status = 'Брак'
+                                    ORDER BY b.created_at DESC
+                                    LIMIT 1
+                                ")->fetch();
+                                ?>
+                                <strong>Всего забраковано партий:</strong> <?= $total_rejected_batches ?><br>
+                                <?php if ($last_rejected_batch): ?>
+                                <strong>Последняя забракованная партия:</strong> <?= htmlspecialchars($last_rejected_batch['batch_number']) ?> (<?= date('d.m.Y', strtotime($last_rejected_batch['created_at'])) ?>)<br>
+                                <strong>Основные причины:</strong><br>
+                                <?php 
+                                $issues = [];
+                                if ($last_rejected_batch['coliforms_detected']) $issues[] = 'Колиформы';
+                                if ($last_rejected_batch['thermotolerant_coliforms_detected']) $issues[] = 'Термотолерантные колиформы';
+                                if ($last_rejected_batch['pseudomonas_detected']) $issues[] = 'Псевдомонады';
+                                if ($last_rejected_batch['nitrates_mg_l'] > 45) $issues[] = 'Превышение нитратов (' . $last_rejected_batch['nitrates_mg_l'] . ' мг/л)';
+                                if ($last_rejected_batch['iron_mg_l'] > 0.3) $issues[] = 'Превышение железа (' . $last_rejected_batch['iron_mg_l'] . ' мг/л)';
+                                if ($last_rejected_batch['ph'] < 6.5 || $last_rejected_batch['ph'] > 9.0) $issues[] = 'pH вне диапазона (' . $last_rejected_batch['ph'] . ')';
+                                if ($last_rejected_batch['transparency'] === 'Мутная') $issues[] = 'Мутность';
+                                if ($last_rejected_batch['color'] === 'Окрашена') $issues[] = 'Цветность';
+                                
+                                foreach ($issues as $issue) {
+                                    echo '• ' . $issue . '<br>';
+                                }
+                                ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <div class="info-block" style="border-left-color: var(--success);">
+                            <div class="info-content" style="color: var(--success);">
+                                <i class="fas fa-check-circle"></i> Брак не обнаружен. Все партии соответствуют требованиям качества.
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
 
                 
 
@@ -474,209 +519,7 @@ $main_alert = $alerts[0];
                         </div>
                     </div>
                 </div>
-        <!-- Партии, готовые к отгрузке -->
-        <div class="section">
-            <div class="section-title"><i class="fas fa-box-open"></i> Партии, готовые к отгрузке</div>
-            <?php 
-            // Обновляем запрос, чтобы получить больше информации о партиях
-            $detailed_ready_batches = $pdo->query("
-                SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, wb.name AS brand,
-                       DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
-                       DATEDIFF(DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH), CURDATE()) AS days_to_expiry
-                FROM batches b
-                JOIN water_brands wb ON b.brand_id = wb.id
-                WHERE b.status = 'Годна к реализации' AND b.remaining_bottles > 0
-                ORDER BY b.bottling_datetime DESC
-                LIMIT 5
-            ")->fetchAll();
-            ?>
-            <?php if ($detailed_ready_batches): ?>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Партия</th>
-                        <th>Марка</th>
-                        <th>Остаток</th>
-                        <th>Дата розлива</th>
-                        <th>Срок годности</th>
-                        <th>Действие</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($detailed_ready_batches as $b): 
-                        $days_to_expiry = $b['days_to_expiry'];
-                        $expiry_class = '';
-                        if ($days_to_expiry <= 7) {
-                            $expiry_class = 'status--danger';
-                        } elseif ($days_to_expiry <= 30) {
-                            $expiry_class = 'status--warning';
-                        } else {
-                            $expiry_class = 'status--good';
-                        }
-                    ?>
-                    <tr>
-                        <td><?= htmlspecialchars($b['batch_number']) ?></td>
-                        <td><?= htmlspecialchars($b['brand']) ?></td>
-                        <td><?= number_format($b['remaining_bottles'], 0, ' ', ' ') ?></td>
-                        <td><?= date('d.m.Y', strtotime($b['bottling_datetime'])) ?></td>
-                        <td><span class="status-tag <?= $expiry_class ?>"><?= date('d.m.Y', strtotime($b['expiry_date'])) ?> (<?= $days_to_expiry ?> дн.)</span></td>
-                        <td><a href="shipments.php?batch_id=<?= $b['id'] ?>" class="batch-link">Оформить отгрузку</a></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-            <p class="empty">Нет партий, готовых к отгрузке.</p>
-            <?php endif; ?>
-        </div>
 
-        <!-- Последние отгрузки -->
-        <div class="section">
-            <div class="section-title"><i class="fas fa-truck"></i> Последние отгрузки</div>
-            <?php if ($recent_shipments): ?>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Партия</th>
-                        <th>Клиент</th>
-                        <th>Бутылок</th>
-                        <th>Дата</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($recent_shipments as $s): ?>
-                    <tr>
-                        <td><?= htmlspecialchars($s['batch_number']) ?></td>
-                        <td><?= htmlspecialchars($s['client']) ?></td>
-                        <td><?= number_format($s['bottles_shipped'], 0, ' ', ' ') ?></td>
-                        <td><?= date('d.m.Y', strtotime($s['shipment_date'])) ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-            <p class="empty">Отгрузок пока нет.</p>
-            <?php endif; ?>
-        </div>
-
-        <!-- Скоро истекает срок годности -->
-        <?php if (!empty($expiring_batches)): ?>
-        <div class="section">
-            <div class="section-title"><i class="fas fa-clock"></i> Срок годности истекает</div>
-            <div class="info-block" style="border-left-color: var(--warning);">
-                <div class="info-content">
-                    <?php foreach ($expiring_batches as $b): ?>
-                    <div>Партия <?= htmlspecialchars($b['batch_number']) ?> — осталось <?= $b['days_left'] ?> дн.</div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- Анализ брака -->
-        <div class="section">
-            <div class="section-title"><i class="fas fa-ban"></i> Анализ брака</div>
-            <?php if (!empty($brake_reasons)): ?>
-                <?php foreach ($brake_reasons as $r): ?>
-                <div class="info-block" style="border-left-color: var(--danger);">
-                    <div class="info-title"><?= htmlspecialchars($r['reason']) ?></div>
-                    <div class="info-content"><?= $r['count'] ?> случаев</div>
-                </div>
-                <?php endforeach; ?>
-                
-                <!-- Дополнительная информация по браку -->
-                <div class="info-block" style="border-left-color: var(--danger);">
-                    <div class="info-title">Общая статистика брака</div>
-                    <div class="info-content">
-                        <?php
-                        $total_rejected_batches = $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Брак'")->fetchColumn();
-                        $last_rejected_batch = $pdo->query("
-                            SELECT b.batch_number, b.created_at, tw.coliforms_detected, tw.thermotolerant_coliforms_detected, 
-                                   tw.pseudomonas_detected, tw.nitrates_mg_l, tw.iron_mg_l, tw.ph, tw.transparency, tw.color
-                            FROM batches b
-                            JOIN treated_water_tests tw ON b.treated_test_id = tw.id
-                            WHERE b.status = 'Брак'
-                            ORDER BY b.created_at DESC
-                            LIMIT 1
-                        ")->fetch();
-                        ?>
-                        <strong>Всего забраковано партий:</strong> <?= $total_rejected_batches ?><br>
-                        <?php if ($last_rejected_batch): ?>
-                        <strong>Последняя забракованная партия:</strong> <?= htmlspecialchars($last_rejected_batch['batch_number']) ?> (<?= date('d.m.Y', strtotime($last_rejected_batch['created_at'])) ?>)<br>
-                        <strong>Основные причины:</strong><br>
-                        <?php 
-                        $issues = [];
-                        if ($last_rejected_batch['coliforms_detected']) $issues[] = 'Колиформы';
-                        if ($last_rejected_batch['thermotolerant_coliforms_detected']) $issues[] = 'Термотолерантные колиформы';
-                        if ($last_rejected_batch['pseudomonas_detected']) $issues[] = 'Псевдомонады';
-                        if ($last_rejected_batch['nitrates_mg_l'] > 45) $issues[] = 'Превышение нитратов (' . $last_rejected_batch['nitrates_mg_l'] . ' мг/л)';
-                        if ($last_rejected_batch['iron_mg_l'] > 0.3) $issues[] = 'Превышение железа (' . $last_rejected_batch['iron_mg_l'] . ' мг/л)';
-                        if ($last_rejected_batch['ph'] < 6.5 || $last_rejected_batch['ph'] > 9.0) $issues[] = 'pH вне диапазона (' . $last_rejected_batch['ph'] . ')';
-                        if ($last_rejected_batch['transparency'] === 'Мутная') $issues[] = 'Мутность';
-                        if ($last_rejected_batch['color'] === 'Окрашена') $issues[] = 'Цветность';
-                        
-                        foreach ($issues as $issue) {
-                            echo '• ' . $issue . '<br>';
-                        }
-                        ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            <?php else: ?>
-                <div class="info-block" style="border-left-color: var(--success);">
-                    <div class="info-content" style="color: var(--success);">
-                        <i class="fas fa-check-circle"></i> Брак не обнаружен. Все партии соответствуют требованиям качества.
-                    </div>
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <!-- Состояние источников -->
-        <div class="section">
-            <div class="section-title"><i class="fas fa-water"></i> Состояние источников</div>
-            <?php
-            // Получаем все источники с приближающимся сроком санитарного заключения (осталось 30 дней или меньше)
-            $sources_with_expiring_sanitary = $pdo->query("
-                SELECT id, name, sanitary_conclusion_number, sanitary_conclusion_valid_until,
-                       DATEDIFF(sanitary_conclusion_valid_until, CURDATE()) AS days_left
-                FROM water_sources 
-                WHERE sanitary_conclusion_valid_until <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-            ")->fetchAll();
-            ?>
-            <?php if (!empty($sources_with_expiring_sanitary)): ?>
-                <?php foreach ($sources_with_expiring_sanitary as $src): 
-                    $days_left = $src['days_left'];
-                    $is_expired = $days_left < 0;
-                    $days_text = abs($days_left);
-                    if ($days_left == 0) {
-                        $days_text = "сегодня";
-                        $date_text = "истекает сегодня";
-                    } elseif ($is_expired) {
-                        $date_text = "истек " . $days_text . " дн. назад";
-                    } else {
-                        $date_text = "истекает через " . $days_text . " дн.";
-                    }
-                    
-                    $border_color = $is_expired ? 'var(--danger)' : ($days_left <= 7 ? 'var(--warning)' : 'var(--accent)');
-                ?>
-                <div class="info-block" style="border-left-color: <?= $border_color ?>;">
-                    <div class="info-title"><?= htmlspecialchars($src['name']) ?></div>
-                    <div class="info-content">
-                        Санзаключение №<?= htmlspecialchars($src['sanitary_conclusion_number']) ?> 
-                        (до <?= date('d.m.Y', strtotime($src['sanitary_conclusion_valid_until'])) ?>)<br>
-                        <span style="<?= $is_expired ? 'color: var(--danger); font-weight: bold;' : '' ?>">
-                            <?= ucfirst($date_text) ?>
-                        </span>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-            <?php else: ?>
-                <div class="info-block" style="border-left-color: var(--success);">
-                    <div class="info-content" style="color: var(--success);">
-                        <i class="fas fa-check-circle"></i> Все источники имеют действующие санитарные заключения
-                    </div>
-                </div>
-            <?php endif; ?>
         <footer>
             AquaTrack — система контроля производства питьевой бутилированной воды. Все данные сохраняются в архиве.
         </footer>

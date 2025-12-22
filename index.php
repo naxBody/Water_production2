@@ -292,7 +292,8 @@ $main_alert = $alerts[0];
         
 
         <!-- Основной контент -->
-
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div>
                 <!-- Все готовые партии -->
                 <div class="section">
                     <div class="section-title"><i class="fas fa-box-open"></i> Партии, готовые к отгрузке</div>
@@ -411,8 +412,42 @@ $main_alert = $alerts[0];
                         $critical_issues[] = 'sources';
                     }
                     
+                    // Проверка партий, ожидающих анализа
+                    $pending_analysis_batches = $pdo->query("
+                        SELECT b.id, b.batch_number, b.bottling_datetime, wb.name AS brand
+                        FROM batches b
+                        JOIN treated_water_tests tw ON b.treated_test_id = tw.id
+                        JOIN water_brands wb ON b.brand_id = wb.id
+                        WHERE b.status = 'Ожидает анализа'
+                        ORDER BY b.bottling_datetime DESC
+                    ")->fetchAll();
+                    
+                    if (!empty($pending_analysis_batches)) {
+                        $critical_issues[] = 'pending_analysis';
+                    }
+                    
                     if (!empty($critical_issues)):
                     ?>
+                        <?php if (!empty($pending_analysis_batches)): ?>
+                        <div class="info-block" style="border-left-color: var(--warning);">
+                            <div class="info-title">Партии, требующие лабораторного анализа</div>
+                            <div class="info-content">
+                                <?php foreach ($pending_analysis_batches as $b): ?>
+                                <div>
+                                    <a href="production.php?batch_id=<?= $b['id'] ?>" class="batch-link">
+                                        Партия <?= htmlspecialchars($b['batch_number']) ?> (<?= htmlspecialchars($b['brand']) ?>)
+                                    </a> — от  <?= date('d.m.Y', strtotime($b['bottling_datetime'])) ?>
+                                </div>
+                                <?php endforeach; ?>
+                                <div style="margin-top: 8px;">
+                                    <a href="production.php" class="btn" style="padding: 6px 12px; font-size: 14px;">
+                                        <i class="fas fa-vial"></i> Перейти к анализу
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        
                         <?php if (!empty($brake_reasons)): ?>
                         <div class="info-block" style="border-left-color: var(--danger);">
                             <div class="info-title">Анализ брака</div>
@@ -505,6 +540,41 @@ $main_alert = $alerts[0];
                             </div>
                         </div>
                     <?php endif; ?>
+                </div>
+                
+                <!-- Предупреждение о санитарных заключениях -->
+                <div class="section">
+                    <div class="section-title"><i class="fas fa-exclamation-circle"></i> Важные предупреждения</div>
+                    <div class="info-block" style="border-left-color: var(--warning);">
+                        <div class="info-title">Санитарные заключения</div>
+                        <div class="info-content">
+                            <p>Обратите внимание: санитарные заключения на источники воды требуют регулярного продления!</p>
+                            <?php
+                            $expiring_conclusions = $pdo->query("
+                                SELECT name, sanitary_conclusion_number, 
+                                       DATEDIFF(sanitary_conclusion_valid_until, CURDATE()) AS days_left
+                                FROM water_sources 
+                                WHERE sanitary_conclusion_valid_until <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)
+                            ")->fetchAll();
+                            
+                            if (!empty($expiring_conclusions)):
+                            ?>
+                                <p><strong>Источники с истекающими заключениями:</strong></p>
+                                <?php foreach ($expiring_conclusions as $src): ?>
+                                <div>
+                                    <?= htmlspecialchars($src['name']) ?>: 
+                                    <?php if ($src['days_left'] < 0): ?>
+                                        <span style="color: var(--danger);">истекло (<?= abs($src['days_left']) ?> дн. назад)</span>
+                                    <?php else: ?>
+                                        истекает через <?= $src['days_left'] ?> дн.
+                                    <?php endif; ?>
+                                </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <p>Все санитарные заключения действительны.</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
 
                 

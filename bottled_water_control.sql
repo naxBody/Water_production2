@@ -135,6 +135,13 @@ CREATE TABLE batches (
 ) ENGINE=InnoDB;
 
 -- Отгрузки (весь движение — в архиве)
+CREATE TABLE operators (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(150) NOT NULL,
+    role ENUM('operator', 'shipper', 'lab_analyst') NOT NULL DEFAULT 'operator',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 CREATE TABLE shipments (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     batch_id INT UNSIGNED NOT NULL,
@@ -251,7 +258,15 @@ INSERT INTO batches (batch_number, brand_id, treated_test_id, bottling_datetime,
 ('W-250712-001', 1, 9, '2025-07-12 11:30:00', 12, 3, 2, 2640, 13200.00, 'Оператор Л.В.', 'Годна к реализации', 2640),
 ('W-251018-001', 4, 10, '2025-10-18 14:00:00', 12, 1, 1, 19600, 9800.00, 'Оператор Л.В.', 'Годна к реализации', 19600);
 
--- 6. Отгрузки (7 записей: включая частичные)
+-- 6. Операторы
+INSERT INTO operators (full_name, role) VALUES
+('Иванов И.И.', 'operator'),
+('Петров П.П.', 'shipper'),
+('Сидоров С.С.', 'lab_analyst'),
+('Козлов А.В.', 'operator'),
+('Волков Д.Е.', 'shipper');
+
+-- 7. Отгрузки (7 записей: включая частичные)
 INSERT INTO shipments (batch_id, client_id, shipment_date, bottles_shipped, waybill_number, shipped_by) VALUES
 (1, 1, '2023-03-18', 7000, 'ТТН-2023-0007', 'Грузчик А.А.'),
 (2, 2, '2023-07-01', 16400, 'ТТН-2023-0042', 'Грузчик А.А.'),
@@ -260,3 +275,14 @@ INSERT INTO shipments (batch_id, client_id, shipment_date, bottles_shipped, wayb
 (5, 1, '2024-09-20', 7046, 'ТТН-2024-0128', 'Грузчик А.А.'),
 (6, 5, '2024-12-05', 14600, 'ТТН-2024-0189', 'Грузчик А.А.'),
 (3, 2, '2024-02-28', 120, 'ТТН-2024-0022', 'Грузчик А.А.'); -- последняя часть партии W-230905-001
+
+-- 8. Дополнительные партии для демонстрации
+INSERT INTO batches (batch_number, brand_id, treated_test_id, bottling_datetime, shelf_life_months, bottle_type_id, production_line_id, total_bottles, total_liters, operator_name, status, remaining_bottles) VALUES
+('W-251223-001', 1, 1, '2025-12-20 09:00:00', 12, 2, 1, 1000, 1500.00, 'Оператор И.И.', 'Ожидает анализа', 1000),
+('W-251223-002', 2, 2, '2025-12-21 10:00:00', 12, 1, 2, 2000, 1000.00, 'Оператор П.П.', 'Ожидает анализа', 2000),
+('W-251223-003', 3, 3, '2025-12-22 11:00:00', 12, 3, 1, 500, 2500.00, 'Оператор С.С.', 'Ожидает анализа', 500),
+('W-251115-001', 1, 8, '2025-11-15 09:00:00', 12, 2, 1, 1000, 1500.00, 'Оператор Л.В.', 'Годна к реализации', 1000),
+('W-251010-001', 2, 7, '2025-10-10 10:00:00', 12, 1, 2, 1500, 750.00, 'Оператор Л.В.', 'Годна к реализации', 1500),
+('W-250905-001', 3, 6, '2025-09-05 11:00:00', 12, 3, 1, 800, 4000.00, 'Оператор Л.В.', 'Годна к реализации', 800),
+('W-251201-001', 4, 5, '2025-12-01 09:00:00', 12, 1, 1, 500, 250.00, 'Оператор Л.В.', 'Брак', 500),
+('W-251120-001', 5, 4, '2025-11-20 10:00:00', 12, 2, 2, 600, 900.00, 'Оператор Л.В.', 'Брак', 600);

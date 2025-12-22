@@ -381,47 +381,59 @@ $main_alert = $alerts[0];
 
             <!-- Правая колонка: информация -->
             <div>
-                <!-- Скоро истекает срок годности -->
-                <?php if (!empty($expiring_batches)): ?>
+                <!-- Критическая информация -->
                 <div class="section">
-                    <div class="section-title"><i class="fas fa-clock"></i> Срок годности истекает</div>
-                    <div class="info-block" style="border-left-color: var(--warning);">
-                        <div class="info-content">
-                            <?php foreach ($expiring_batches as $b): ?>
-                            <div>Партия <?= htmlspecialchars($b['batch_number']) ?> — осталось <?= $b['days_left'] ?> дн.</div>
+                    <div class="section-title"><i class="fas fa-exclamation-triangle"></i> Критические вопросы</div>
+                    
+                    <?php
+                    // Проверяем наличие критических ситуаций
+                    $critical_issues = [];
+                    
+                    // Проверка брака
+                    if (!empty($brake_reasons)) {
+                        $critical_issues[] = 'brake';
+                    }
+                    
+                    // Проверка истекающих сроков годности
+                    if (!empty($expiring_batches)) {
+                        $critical_issues[] = 'expiring';
+                    }
+                    
+                    // Проверка источников с истекающим санитарным заключением
+                    $sources_with_expiring_sanitary = $pdo->query("
+                        SELECT id, name, sanitary_conclusion_number, sanitary_conclusion_valid_until,
+                               DATEDIFF(sanitary_conclusion_valid_until, CURDATE()) AS days_left
+                        FROM water_sources 
+                        WHERE sanitary_conclusion_valid_until <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+                    ")->fetchAll();
+                    
+                    if (!empty($sources_with_expiring_sanitary)) {
+                        $critical_issues[] = 'sources';
+                    }
+                    
+                    if (!empty($critical_issues)):
+                    ?>
+                        <?php if (!empty($brake_reasons)): ?>
+                        <div class="info-block" style="border-left-color: var(--danger);">
+                            <div class="info-title">Анализ брака</div>
+                            <?php foreach ($brake_reasons as $r): ?>
+                                <div class="info-content"><strong><?= htmlspecialchars($r['reason']) ?>:</strong> <?= $r['count'] ?> случаев</div>
                             <?php endforeach; ?>
-                        </div>
-                    </div>
-                </div>
-                <?php endif; ?>
-
-                <!-- Причины брака -->
-                <div class="section">
-                    <div class="section-title"><i class="fas fa-ban"></i> Анализ брака</div>
-                    <?php if (!empty($brake_reasons)): ?>
-                        <?php foreach ($brake_reasons as $r): ?>
-                        <div class="info-block" style="border-left-color: var(--danger);">
-                            <div class="info-title"><?= htmlspecialchars($r['reason']) ?></div>
-                            <div class="info-content"><?= $r['count'] ?> случаев</div>
-                        </div>
-                        <?php endforeach; ?>
-                        
-                        <!-- Дополнительная информация по браку -->
-                        <div class="info-block" style="border-left-color: var(--danger);">
-                            <div class="info-title">Общая статистика брака</div>
+                            
+                            <!-- Дополнительная информация по последнему браку -->
+                            <?php
+                            $total_rejected_batches = $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Брак'")->fetchColumn();
+                            $last_rejected_batch = $pdo->query("
+                                SELECT b.batch_number, b.created_at, tw.coliforms_detected, tw.thermotolerant_coliforms_detected, 
+                                       tw.pseudomonas_detected, tw.nitrates_mg_l, tw.iron_mg_l, tw.ph, tw.transparency, tw.color
+                                FROM batches b
+                                JOIN treated_water_tests tw ON b.treated_test_id = tw.id
+                                WHERE b.status = 'Брак'
+                                ORDER BY b.created_at DESC
+                                LIMIT 1
+                            ")->fetch();
+                            ?>
                             <div class="info-content">
-                                <?php
-                                $total_rejected_batches = $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Брак'")->fetchColumn();
-                                $last_rejected_batch = $pdo->query("
-                                    SELECT b.batch_number, b.created_at, tw.coliforms_detected, tw.thermotolerant_coliforms_detected, 
-                                           tw.pseudomonas_detected, tw.nitrates_mg_l, tw.iron_mg_l, tw.ph, tw.transparency, tw.color
-                                    FROM batches b
-                                    JOIN treated_water_tests tw ON b.treated_test_id = tw.id
-                                    WHERE b.status = 'Брак'
-                                    ORDER BY b.created_at DESC
-                                    LIMIT 1
-                                ")->fetch();
-                                ?>
                                 <strong>Всего забраковано партий:</strong> <?= $total_rejected_batches ?><br>
                                 <?php if ($last_rejected_batch): ?>
                                 <strong>Последняя забракованная партия:</strong> <?= htmlspecialchars($last_rejected_batch['batch_number']) ?> (<?= date('d.m.Y', strtotime($last_rejected_batch['created_at'])) ?>)<br>
@@ -444,30 +456,20 @@ $main_alert = $alerts[0];
                                 <?php endif; ?>
                             </div>
                         </div>
-                    <?php else: ?>
-                        <div class="info-block" style="border-left-color: var(--success);">
-                            <div class="info-content" style="color: var(--success);">
-                                <i class="fas fa-check-circle"></i> Брак не обнаружен. Все партии соответствуют требованиям качества.
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($expiring_batches)): ?>
+                        <div class="info-block" style="border-left-color: var(--warning);">
+                            <div class="info-title">Партии с истекающим сроком годности</div>
+                            <div class="info-content">
+                                <?php foreach ($expiring_batches as $b): ?>
+                                <div>Партия <?= htmlspecialchars($b['batch_number']) ?> — осталось <?= $b['days_left'] ?> дн.</div>
+                                <?php endforeach; ?>
                             </div>
                         </div>
-                    <?php endif; ?>
-                </div>
-
-                
-
-                <!-- Проблемные источники -->
-                <div class="section">
-                    <div class="section-title"><i class="fas fa-water"></i> Состояние источников</div>
-                    <?php
-                    // Получаем все источники с приближающимся сроком санитарного заключения (осталось 30 дней или меньше)
-                    $sources_with_expiring_sanitary = $pdo->query("
-                        SELECT id, name, sanitary_conclusion_number, sanitary_conclusion_valid_until,
-                               DATEDIFF(sanitary_conclusion_valid_until, CURDATE()) AS days_left
-                        FROM water_sources 
-                        WHERE sanitary_conclusion_valid_until <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-                    ")->fetchAll();
-                    ?>
-                    <?php if (!empty($sources_with_expiring_sanitary)): ?>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($sources_with_expiring_sanitary)): ?>
                         <?php foreach ($sources_with_expiring_sanitary as $src): 
                             $days_left = $src['days_left'];
                             $is_expired = $days_left < 0;
@@ -494,33 +496,24 @@ $main_alert = $alerts[0];
                             </div>
                         </div>
                         <?php endforeach; ?>
+                        <?php endif; ?>
+                        
                     <?php else: ?>
                         <div class="info-block" style="border-left-color: var(--success);">
                             <div class="info-content" style="color: var(--success);">
-                                <i class="fas fa-check-circle"></i> Все источники имеют действующие санитарные заключения
+                                <i class="fas fa-check-circle"></i> Критических ситуаций не обнаружено. Все процессы соответствуют требованиям качества.
                             </div>
                         </div>
                     <?php endif; ?>
                 </div>
 
-                <!-- Нормативная информация -->
-                <div class="section">
-                    <div class="section-title"><i class="fas fa-book"></i> Актуальные требования</div>
-                    <div class="info-block">
-                        <div class="info-content">
-                            <strong>СТБ 1575-2013:</strong><br>
-                            • pH: 6,5–9,0<br>
-                            • Нитраты: ≤ 45 мг/л<br>
-                            • Колиформы: не допускаются<br>
-                            • Срок годности: 12 месяцев<br><br>
-                            <strong>ТР ТС 021/2011:</strong><br>
-                            • Обязательная прослеживаемость<br>
-                            • Архив — минимум 2 года после срока годности
-                        </div>
-                    </div>
-                </div>
+                
 
-        <footer>
+                
+
+                
+
+                        <footer>
             AquaTrack — система контроля производства питьевой бутилированной воды. Все данные сохраняются в архиве.
         </footer>
     </div>

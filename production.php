@@ -242,6 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $thermotolerant = !empty($_POST['thermotolerant_coliforms_detected']);
             $pseudomonas = !empty($_POST['pseudomonas_detected']);
 
+
             $is_compliant = !($coliforms || $thermotolerant || $pseudomonas) &&
                 $ph >= 6.5 && $ph <= 9.0 &&
                 $hardness <= 7.0 &&
@@ -252,42 +253,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $omch <= 100 &&
                 $yeast <= 100;
 
+
+            //bottled_water_control.sql
             // Validate and sanitize all values before insertion
-            $stmt = $pdo->prepare("
-                INSERT INTO treated_water_tests (
-                    treatment_id, tested_at, tested_by,
-                    odor, taste, transparency, color,
-                    ph, hardness_mmol, dry_residue_mg_l, iron_mg_l, nitrates_mg_l, fluorides_mg_l,
-                    omch_cfu_ml, coliforms_detected, thermotolerant_coliforms_detected, pseudomonas_detected,
-                    yeast_mold_cfu_ml, notes
-                ) VALUES (
-                    ?, NOW(), ?,
-                    ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?,
-                    ?, ?
-                )
-            ");
-            $stmt->execute([
-                (int)$treatment_id, 
-                (string)$lab_operator,
-                (string)$odor, 
-                (string)$taste, 
-                (string)$transparency, 
-                (string)$color,
-                (float)$ph, 
-                (float)$hardness, 
-                (int)$dry_residue, 
-                (float)$iron, 
-                (float)$nitrates, 
-                (float)$fluorides,
-                (int)$omch, 
-                (bool)$coliforms, 
-                (bool)$thermotolerant, 
-                (bool)$pseudomonas,
-                (int)$yeast, 
-                null
-            ]);
+            // Validate and sanitize all values before insertion
+$stmt = $pdo->prepare("
+    INSERT INTO treated_water_tests (
+        treatment_id, tested_at, tested_by,
+        odor, taste, transparency, color,
+        ph, hardness_mmol, dry_residue_mg_l, iron_mg_l, nitrates_mg_l, fluorides_mg_l,
+        omch_cfu_ml, coliforms_detected, thermotolerant_coliforms_detected, pseudomonas_detected,
+        yeast_mold_cfu_ml, notes
+    ) VALUES (
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?
+    )
+");
+
+            
+            // echo ("hello world");
+
+            
+$stmt->execute([
+(int)$treatment_id,
+(string)$tested_at,
+(string)$lab_operator,
+(string)$odor,
+(string)$taste,
+(string)$transparency,
+(string)$color,
+(float)$ph,
+(float)$hardness,
+(int)$dry_residue,
+(float)$iron,
+(float)$nitrates,
+(float)$fluorides,
+(int)$omch,
+(bool)$coliforms,
+(bool)$thermotolerant,
+(bool)$pseudomonas,
+(int)$yeast,
+(string)$notes
+]);
+
+echo ("hello world");;
 
             // Get the ID of the newly created analysis
             $analysis_id = $pdo->lastInsertId();

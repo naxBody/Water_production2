@@ -261,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     omch_cfu_ml, coliforms_detected, thermotolerant_coliforms_detected, pseudomonas_detected,
                     yeast_mold_cfu_ml, notes
                 ) VALUES (
-                    ?, NOW(), ?,
+                    ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, ?,
@@ -270,6 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmt->execute([
                 (int)$treatment_id, 
+                date('Y-m-d H:i:s'),
                 (string)$lab_operator,
                 (string)$odor, 
                 (string)$taste, 

@@ -154,9 +154,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $is_approved
             ]);
 
+            // Get the ID of the newly created raw test
+            $raw_test_id = $pdo->lastInsertId();
+            
+            // Get the raw test details to set in context
+            $raw_test = $pdo->query("
+                SELECT r.*, ws.name AS source_name, o.full_name AS sampled_by_name
+                FROM raw_water_tests r
+                JOIN water_sources ws ON r.source_id = ws.id
+                LEFT JOIN operators o ON r.sampled_by = o.full_name
+                WHERE r.id = $raw_test_id
+            ")->fetch();
+            
             $message = $is_approved ? '✅ Проба одобрена для очистки.' : '❌ Проба забракована: нарушены санитарные нормы.';
             $message_type = $is_approved ? 'success' : 'error';
-            if ($is_approved) $current_step = 2;
+            if ($is_approved) {
+                $current_step = 2;
+                $context['raw_test'] = $raw_test;
+            }
 
         } elseif ($_POST['step'] == 2) {
             $raw_test_id = $context['raw_test']['id'] ?? null;
@@ -174,9 +189,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 VALUES (?, NOW(), NOW(), ?, ?, ?)
             ")->execute([$raw_test_id, $volume, json_encode($treatments), $operator]);
 
+            // Get the ID of the newly created treatment
+            $treatment_id = $pdo->lastInsertId();
+            
+            // Get the treatment details to set in context
+            $treatment = $pdo->query("
+                SELECT t.*, ws.name AS source_name, o.full_name AS operator_name
+                FROM water_treatments t
+                JOIN raw_water_tests r ON t.raw_test_id = r.id
+                JOIN water_sources ws ON r.source_id = ws.id
+                LEFT JOIN operators o ON t.operator = o.full_name
+                WHERE t.id = $treatment_id
+            ")->fetch();
+            
             $message = '✅ Очистка завершена. Требуется лабораторный контроль.';
             $message_type = 'success';
             $current_step = 3;
+            $context['treatment'] = $treatment;
 
         } elseif ($_POST['step'] == 3) {
             $treatment_id = $context['treatment']['id'] ?? null;
@@ -239,9 +268,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $is_compliant
             ]);
 
+            // Get the ID of the newly created analysis
+            $analysis_id = $pdo->lastInsertId();
+            
+            // Get the analysis details to set in context
+            $analysis = $pdo->query("
+                SELECT tw.*, ws.name AS source_name, o.full_name AS tested_by_name
+                FROM treated_water_tests tw
+                JOIN water_treatments t ON tw.treatment_id = t.id
+                JOIN raw_water_tests r ON t.raw_test_id = r.id
+                JOIN water_sources ws ON r.source_id = ws.id
+                LEFT JOIN operators o ON tw.tested_by = o.full_name
+                WHERE tw.id = $analysis_id
+            ")->fetch();
+            
             $message = $is_compliant ? '✅ Анализ пройден. Вода готова к розливу.' : '❌ Анализ не пройден: нарушены нормы СТБ 1575-2013.';
             $message_type = $is_compliant ? 'success' : 'error';
-            if ($is_compliant) $current_step = 4;
+            if ($is_compliant) {
+                $current_step = 4;
+                $context['analysis'] = $analysis;
+            }
 
         } elseif ($_POST['step'] == 4) {
             $analysis_id = $context['analysis']['id'] ?? null;
@@ -420,52 +466,112 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="form-group">
                         <label>Органолептические показатели</label>
+                        <div class="field-hint">Оценка внешнего вида и вкусовых качеств воды</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
                             <div>
                                 <label>Запах (0–2)</label>
                                 <input type="number" name="odor_rating" min="0" max="2" value="<?= $last_raw_test['odor_rating'] ?? 0 ?>">
+                                <div class="field-hint">0 - без запаха, 1 - слабый, 2 - выраженный</div>
                             </div>
                             <div>
                                 <label>Привкус (0–2)</label>
                                 <input type="number" name="taste_rating" min="0" max="2" value="<?= $last_raw_test['taste_rating'] ?? 0 ?>">
+                                <div class="field-hint">0 - без привкуса, 1 - слабый, 2 - выраженный</div>
                             </div>
                             <div>
                                 <label>Цветность (°)</label>
                                 <input type="number" name="color_degrees" min="0" value="<?= $last_raw_test['color_degrees'] ?? 10 ?>">
+                                <div class="field-hint">Допустимо до 30° по стандарту</div>
                             </div>
                             <div>
                                 <label>Мутность (ЕМФ)</label>
                                 <input type="number" name="turbidity_emf" min="0" step="0.1" value="<?= $last_raw_test['turbidity_emf'] ?? 0.5 ?>">
+                                <div class="field-hint">Допустимо до 2.5 ЕМФ по стандарту</div>
                             </div>
                         </div>
                     </div>
                     <div class="form-group">
                         <label>Физико-химические показатели</label>
+                        <div class="field-hint">Химический состав воды, влияющий на безопасность и качество</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <div><label>pH</label><input type="number" name="ph" step="0.01" value="<?= $last_raw_test['ph'] ?? 7.2 ?>"></div>
-                            <div><label>Жёсткость (ммоль/л)</label><input type="number" name="hardness_mmol" step="0.1" value="<?= $last_raw_test['hardness_mmol'] ?? 4.0 ?>"></div>
-                            <div><label>Сухой остаток (мг/л)</label><input type="number" name="dry_residue_mg_l" value="<?= $last_raw_test['dry_residue_mg_l'] ?? 500 ?>"></div>
-                            <div><label>Железо (мг/л)</label><input type="number" name="iron_mg_l" step="0.001" value="<?= $last_raw_test['iron_mg_l'] ?? 0.1 ?>"></div>
-                            <div><label>Нитраты (мг/л)</label><input type="number" name="nitrates_mg_l" step="0.1" value="<?= $last_raw_test['nitrates_mg_l'] ?? 20.0 ?>"></div>
-                            <div><label>Фториды (мг/л)</label><input type="number" name="fluorides_mg_l" step="0.01" value="<?= $last_raw_test['fluorides_mg_l'] ?? 1.0 ?>"></div>
-                            <div><label>Хлориды (мг/л)</label><input type="number" name="chlorides_mg_l" value="<?= $last_raw_test['chlorides_mg_l'] ?? 100 ?>"></div>
-                            <div><label>Сульфаты (мг/л)</label><input type="number" name="sulfates_mg_l" value="<?= $last_raw_test['sulfates_mg_l'] ?? 150 ?>"></div>
+                            <div>
+                                <label>pH</label>
+                                <input type="number" name="ph" step="0.01" value="<?= $last_raw_test['ph'] ?? 7.2 ?>">
+                                <div class="field-hint">Норма: 6.5–9.0</div>
+                            </div>
+                            <div>
+                                <label>Жёсткость (ммоль/л)</label>
+                                <input type="number" name="hardness_mmol" step="0.1" value="<?= $last_raw_test['hardness_mmol'] ?? 4.0 ?>">
+                                <div class="field-hint">Норма: до 7.0 ммоль/л</div>
+                            </div>
+                            <div>
+                                <label>Сухой остаток (мг/л)</label>
+                                <input type="number" name="dry_residue_mg_l" value="<?= $last_raw_test['dry_residue_mg_l'] ?? 500 ?>">
+                                <div class="field-hint">Норма: до 1000 мг/л</div>
+                            </div>
+                            <div>
+                                <label>Железо (мг/л)</label>
+                                <input type="number" name="iron_mg_l" step="0.001" value="<?= $last_raw_test['iron_mg_l'] ?? 0.1 ?>">
+                                <div class="field-hint">Норма: до 0.3 мг/л</div>
+                            </div>
+                            <div>
+                                <label>Нитраты (мг/л)</label>
+                                <input type="number" name="nitrates_mg_l" step="0.1" value="<?= $last_raw_test['nitrates_mg_l'] ?? 20.0 ?>">
+                                <div class="field-hint">Норма: до 45 мг/л</div>
+                            </div>
+                            <div>
+                                <label>Фториды (мг/л)</label>
+                                <input type="number" name="fluorides_mg_l" step="0.01" value="<?= $last_raw_test['fluorides_mg_l'] ?? 1.0 ?>">
+                                <div class="field-hint">Норма: 0.6–1.5 мг/л</div>
+                            </div>
+                            <div>
+                                <label>Хлориды (мг/л)</label>
+                                <input type="number" name="chlorides_mg_l" value="<?= $last_raw_test['chlorides_mg_l'] ?? 100 ?>">
+                                <div class="field-hint">Норма: до 250 мг/л</div>
+                            </div>
+                            <div>
+                                <label>Сульфаты (мг/л)</label>
+                                <input type="number" name="sulfates_mg_l" value="<?= $last_raw_test['sulfates_mg_l'] ?? 150 ?>">
+                                <div class="field-hint">Норма: до 500 мг/л</div>
+                            </div>
                         </div>
                     </div>
                     <div class="form-group">
                         <label>Микробиология</label>
+                        <div class="field-hint">Показатели безопасности воды по микробиологическим параметрам</div>
                         <div class="checkbox-group">
-                            <div class="checkbox-item"><input type="checkbox" name="coliforms_100ml" id="coliforms"><label for="coliforms">Колиформы</label></div>
-                            <div class="checkbox-item"><input type="checkbox" name="thermotolerant_coliforms_100ml" id="thermotolerant"><label for="thermotolerant">Термотолерантные колиформы</label></div>
-                            <div class="checkbox-item"><input type="checkbox" name="pseudomonas_250ml" id="pseudomonas"><label for="pseudomonas">Pseudomonas</label></div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" name="coliforms_100ml" id="coliforms">
+                                <label for="coliforms">Колиформы</label>
+                                <div class="field-hint">Обнаружение в 100 мл воды - недопустимо</div>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" name="thermotolerant_coliforms_100ml" id="thermotolerant">
+                                <label for="thermotolerant">Термотолерантные колиформы</label>
+                                <div class="field-hint">Обнаружение в 100 мл воды - недопустимо</div>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" name="pseudomonas_250ml" id="pseudomonas">
+                                <label for="pseudomonas">Pseudomonas</label>
+                                <div class="field-hint">Обнаружение в 250 мл воды - недопустимо</div>
+                            </div>
                         </div>
                         <div class="field-hint">Любое обнаружение — автоматический брак.</div>
                     </div>
                     <div class="form-group">
                         <label>Микробное число</label>
+                        <div class="field-hint">Количество микроорганизмов в воде</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <div><label>ОМЧ (КОЕ/мл)</label><input type="number" name="omch_cfu_ml" value="<?= $last_raw_test['omch_cfu_ml'] ?? 50 ?>"></div>
-                            <div><label>Дрожжи/плесени (КОЕ/мл)</label><input type="number" name="yeast_mold_cfu_ml" value="<?= $last_raw_test['yeast_mold_cfu_ml'] ?? 20 ?>"></div>
+                            <div>
+                                <label>ОМЧ (КОЕ/мл)</label>
+                                <input type="number" name="omch_cfu_ml" value="<?= $last_raw_test['omch_cfu_ml'] ?? 50 ?>">
+                                <div class="field-hint">Норма: до 100 КОЕ/мл</div>
+                            </div>
+                            <div>
+                                <label>Дрожжи/плесени (КОЕ/мл)</label>
+                                <input type="number" name="yeast_mold_cfu_ml" value="<?= $last_raw_test['yeast_mold_cfu_ml'] ?? 20 ?>">
+                                <div class="field-hint">Норма: до 10 КОЕ/мл</div>
+                            </div>
                         </div>
                     </div>
                     <button type="submit" class="btn"><i class="fas fa-save"></i> Сохранить анализ</button>
@@ -473,7 +579,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <?php elseif ($current_step == 2): ?>
                 <h2 class="form-title"><i class="fas fa-filter"></i> Этап 2: Очистка воды</h2>
-                <p class="form-desc">Проба из источника: <strong><?= htmlspecialchars($context['raw_test']['source_name']) ?></strong> (<?= date('d.m.Y H:i', strtotime($context['raw_test']['sampled_at'])) ?>)</p>
+                <?php if (isset($context['raw_test']) && $context['raw_test']): ?>
+                    <p class="form-desc">Проба из источника: <strong><?= htmlspecialchars($context['raw_test']['source_name']) ?></strong> (<?= date('d.m.Y H:i', strtotime($context['raw_test']['sampled_at'])) ?>)</p>
+                <?php else: ?>
+                    <p class="form-desc">Ожидание данных о пробе из источника...</p>
+                <?php endif; ?>
                 <form method="POST">
                     <input type="hidden" name="step" value="2">
                     <div class="form-group">
@@ -518,6 +628,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="form-group">
                         <label>Органолептика</label>
+                        <div class="field-hint">Оценка внешнего вида и вкусовых качеств воды после очистки</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
                             <div>
                                 <label>Запах</label>
@@ -525,6 +636,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <option value="Без постороннего">Без постороннего</option>
                                     <option value="Посторонний">Посторонний</option>
                                 </select>
+                                <div class="field-hint">Должен быть без постороннего запаха</div>
                             </div>
                             <div>
                                 <label>Привкус</label>
@@ -532,6 +644,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <option value="Отсутствует">Отсутствует</option>
                                     <option value="Присутствует">Присутствует</option>
                                 </select>
+                                <div class="field-hint">Должен быть без постороннего привкуса</div>
                             </div>
                             <div>
                                 <label>Прозрачность</label>
@@ -539,6 +652,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <option value="Прозрачная">Прозрачная</option>
                                     <option value="Мутная">Мутная</option>
                                 </select>
+                                <div class="field-hint">Вода должна быть прозрачной</div>
                             </div>
                             <div>
                                 <label>Цвет</label>
@@ -546,33 +660,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <option value="Не окрашена">Не окрашена</option>
                                     <option value="Окрашена">Окрашена</option>
                                 </select>
+                                <div class="field-hint">Вода не должна быть окрашена</div>
                             </div>
                         </div>
                     </div>
                     <div class="form-group">
                         <label>Физико-химия</label>
+                        <div class="field-hint">Химический состав воды после очистки, влияющий на безопасность и качество</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <div><label>pH</label><input type="number" name="ph" step="0.01" value="<?= $last_analysis['ph'] ?? 7.2 ?>"></div>
-                            <div><label>Жёсткость (ммоль/л)</label><input type="number" name="hardness" step="0.1" value="<?= $last_analysis['hardness_mmol'] ?? 4.0 ?>"></div>
-                            <div><label>Сухой остаток (мг/л)</label><input type="number" name="dry_residue" value="<?= $last_analysis['dry_residue_mg_l'] ?? 500 ?>"></div>
-                            <div><label>Железо (мг/л)</label><input type="number" name="iron" step="0.001" value="<?= $last_analysis['iron_mg_l'] ?? 0.1 ?>"></div>
-                            <div><label>Нитраты (мг/л)</label><input type="number" name="nitrates" step="0.1" value="<?= $last_analysis['nitrates_mg_l'] ?? 20.0 ?>"></div>
-                            <div><label>Фториды (мг/л)</label><input type="number" name="fluorides" step="0.01" value="<?= $last_analysis['fluorides_mg_l'] ?? 1.0 ?>"></div>
+                            <div>
+                                <label>pH</label>
+                                <input type="number" name="ph" step="0.01" value="<?= $last_analysis['ph'] ?? 7.2 ?>">
+                                <div class="field-hint">Норма: 6.5–9.0</div>
+                            </div>
+                            <div>
+                                <label>Жёсткость (ммоль/л)</label>
+                                <input type="number" name="hardness" step="0.1" value="<?= $last_analysis['hardness_mmol'] ?? 4.0 ?>">
+                                <div class="field-hint">Норма: до 7.0 ммоль/л</div>
+                            </div>
+                            <div>
+                                <label>Сухой остаток (мг/л)</label>
+                                <input type="number" name="dry_residue" value="<?= $last_analysis['dry_residue_mg_l'] ?? 500 ?>">
+                                <div class="field-hint">Норма: до 1000 мг/л</div>
+                            </div>
+                            <div>
+                                <label>Железо (мг/л)</label>
+                                <input type="number" name="iron" step="0.001" value="<?= $last_analysis['iron_mg_l'] ?? 0.1 ?>">
+                                <div class="field-hint">Норма: до 0.3 мг/л</div>
+                            </div>
+                            <div>
+                                <label>Нитраты (мг/л)</label>
+                                <input type="number" name="nitrates" step="0.1" value="<?= $last_analysis['nitrates_mg_l'] ?? 20.0 ?>">
+                                <div class="field-hint">Норма: до 45 мг/л</div>
+                            </div>
+                            <div>
+                                <label>Фториды (мг/л)</label>
+                                <input type="number" name="fluorides" step="0.01" value="<?= $last_analysis['fluorides_mg_l'] ?? 1.0 ?>">
+                                <div class="field-hint">Норма: 0.6–1.5 мг/л</div>
+                            </div>
                         </div>
                     </div>
                     <div class="form-group">
                         <label>Микробиология</label>
                         <div class="checkbox-group">
-                            <div class="checkbox-item"><input type="checkbox" name="coliforms_detected" id="c1"><label for="c1">Колиформы</label></div>
-                            <div class="checkbox-item"><input type="checkbox" name="thermotolerant_coliforms_detected" id="c2"><label for="c2">Термотолерантные колиформы</label></div>
-                            <div class="checkbox-item"><input type="checkbox" name="pseudomonas_detected" id="c3"><label for="c3">Pseudomonas</label></div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" name="coliforms_detected" id="c1">
+                                <label for="c1">Колиформы</label>
+                                <div class="field-hint">Обнаружение недопустимо</div>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" name="thermotolerant_coliforms_detected" id="c2">
+                                <label for="c2">Термотолерантные колиформы</label>
+                                <div class="field-hint">Обнаружение недопустимо</div>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" name="pseudomonas_detected" id="c3">
+                                <label for="c3">Pseudomonas</label>
+                                <div class="field-hint">Обнаружение недопустимо</div>
+                            </div>
                         </div>
                     </div>
                     <div class="form-group">
                         <label>Микробное число</label>
+                        <div class="field-hint">Количество микроорганизмов в воде после очистки</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                            <div><label>ОМЧ (КОЕ/мл)</label><input type="number" name="omch" value="<?= $last_analysis['omch_cfu_ml'] ?? 50 ?>"></div>
-                            <div><label>Дрожжи/плесени (КОЕ/мл)</label><input type="number" name="yeast" value="<?= $last_analysis['yeast_mold_cfu_ml'] ?? 20 ?>"></div>
+                            <div>
+                                <label>ОМЧ (КОЕ/мл)</label>
+                                <input type="number" name="omch" value="<?= $last_analysis['omch_cfu_ml'] ?? 50 ?>">
+                                <div class="field-hint">Норма: до 100 КОЕ/мл</div>
+                            </div>
+                            <div>
+                                <label>Дрожжи/плесени (КОЕ/мл)</label>
+                                <input type="number" name="yeast" value="<?= $last_analysis['yeast_mold_cfu_ml'] ?? 20 ?>">
+                                <div class="field-hint">Норма: до 100 КОЕ/мл</div>
+                            </div>
                         </div>
                     </div>
                     <button type="submit" class="btn"><i class="fas fa-save"></i> Сохранить анализ</button>

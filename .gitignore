@@ -7,35 +7,27 @@
 # Logs
 *.log
 
-# Temporary files
-*.tmp
-*.swp
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
 # Dependencies
 node_modules/
-venv/
 .venv/
-pip-log.txt
-pipenv.lock
-
-# Build artifacts
-build/
-dist/
+venv/
+__pycache__/
 *.egg-info/
+dist/
+build/
+target/
+.gradle/
+.cargo/
+.pip/
 
-# Editors
+# Editor/IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
@@ -44,13 +36,15 @@ coverage/
 htmlcov/
 .coverage
 
-# MyPy
-.mypy_cache/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
 
-# PyTest
-.pytest_cache/
-
-# Compression
+# Compressed files
 *.zip
 *.gz
 *.tar

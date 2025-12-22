@@ -37,8 +37,11 @@ foreach ($operators as $op) {
 }
 
 // === ОПРЕДЕЛЕНИЕ ТЕКУЩЕГО ЭТАПА ===
-$current_step = 1;
-$context = [];
+session_start(); // Enable sessions to maintain context across requests
+
+// Initialize context from session if it exists
+$context = $_SESSION['production_context'] ?? [];
+$current_step = $_SESSION['current_step'] ?? 1;
 
 // === АВТОМАТИЧЕСКОЕ ЗАПОЛНЕНИЕ ПРЕДВАРИТЕЛЬНЫХ ЗНАЧЕНИЙ ===
 // Получим последнюю запись из базы для автозаполнения
@@ -172,6 +175,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $current_step = 2;
                 $context['raw_test'] = $raw_test;
             }
+            // Save context and current step to session
+            $_SESSION['production_context'] = $context;
+            $_SESSION['current_step'] = $current_step;
 
         } elseif ($_POST['step'] == 2) {
             $raw_test_id = $context['raw_test']['id'] ?? null;
@@ -206,6 +212,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message_type = 'success';
             $current_step = 3;
             $context['treatment'] = $treatment;
+            // Save context and current step to session
+            $_SESSION['production_context'] = $context;
+            $_SESSION['current_step'] = $current_step;
 
         } elseif ($_POST['step'] == 3) {
             $treatment_id = $context['treatment']['id'] ?? null;
@@ -288,6 +297,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $current_step = 4;
                 $context['analysis'] = $analysis;
             }
+            // Save context and current step to session
+            $_SESSION['production_context'] = $context;
+            $_SESSION['current_step'] = $current_step;
 
         } elseif ($_POST['step'] == 4) {
             $analysis_id = $context['analysis']['id'] ?? null;
@@ -320,6 +332,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = "✅ Партия $batch_number зарегистрирована.";
             $message_type = 'success';
             $current_step = 1;
+            // Clear context and reset step to 1
+            $_SESSION['production_context'] = [];
+            $_SESSION['current_step'] = 1;
         }
     } catch (Exception $e) {
         $message = "❌ " . $e->getMessage();
@@ -471,22 +486,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div>
                                 <label>Запах (0–2)</label>
                                 <input type="number" name="odor_rating" min="0" max="2" value="<?= $last_raw_test['odor_rating'] ?? 0 ?>">
-                                <div class="field-hint">0 - без запаха, 1 - слабый, 2 - выраженный</div>
+                                <div class="field-hint">0 - без запаха, 1 - слабый, 2 - выраженный. Влияет на потребительские свойства воды.</div>
                             </div>
                             <div>
                                 <label>Привкус (0–2)</label>
                                 <input type="number" name="taste_rating" min="0" max="2" value="<?= $last_raw_test['taste_rating'] ?? 0 ?>">
-                                <div class="field-hint">0 - без привкуса, 1 - слабый, 2 - выраженный</div>
+                                <div class="field-hint">0 - без привкуса, 1 - слабый, 2 - выраженный. Влияет на вкусовые качества воды.</div>
                             </div>
                             <div>
                                 <label>Цветность (°)</label>
                                 <input type="number" name="color_degrees" min="0" value="<?= $last_raw_test['color_degrees'] ?? 10 ?>">
-                                <div class="field-hint">Допустимо до 30° по стандарту</div>
+                                <div class="field-hint">Допустимо до 30° по стандарту. Показывает наличие примесей, влияет на визуальное восприятие.</div>
                             </div>
                             <div>
                                 <label>Мутность (ЕМФ)</label>
                                 <input type="number" name="turbidity_emf" min="0" step="0.1" value="<?= $last_raw_test['turbidity_emf'] ?? 0.5 ?>">
-                                <div class="field-hint">Допустимо до 2.5 ЕМФ по стандарту</div>
+                                <div class="field-hint">Допустимо до 2.5 ЕМФ по стандарту. Показывает наличие взвешенных частиц.</div>
                             </div>
                         </div>
                     </div>
@@ -497,42 +512,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div>
                                 <label>pH</label>
                                 <input type="number" name="ph" step="0.01" value="<?= $last_raw_test['ph'] ?? 7.2 ?>">
-                                <div class="field-hint">Норма: 6.5–9.0</div>
+                                <div class="field-hint">Норма: 6.5–9.0. Показывает кислотность/щелочность воды, влияет на вкус и коррозионные свойства.</div>
                             </div>
                             <div>
                                 <label>Жёсткость (ммоль/л)</label>
                                 <input type="number" name="hardness_mmol" step="0.1" value="<?= $last_raw_test['hardness_mmol'] ?? 4.0 ?>">
-                                <div class="field-hint">Норма: до 7.0 ммоль/л</div>
+                                <div class="field-hint">Норма: до 7.0 ммоль/л. Определяет количество солей кальция и магния, влияет на вкус и образование накипи.</div>
                             </div>
                             <div>
                                 <label>Сухой остаток (мг/л)</label>
                                 <input type="number" name="dry_residue_mg_l" value="<?= $last_raw_test['dry_residue_mg_l'] ?? 500 ?>">
-                                <div class="field-hint">Норма: до 1000 мг/л</div>
+                                <div class="field-hint">Норма: до 1000 мг/л. Общее количество растворённых веществ, влияет на вкус воды.</div>
                             </div>
                             <div>
                                 <label>Железо (мг/л)</label>
                                 <input type="number" name="iron_mg_l" step="0.001" value="<?= $last_raw_test['iron_mg_l'] ?? 0.1 ?>">
-                                <div class="field-hint">Норма: до 0.3 мг/л</div>
+                                <div class="field-hint">Норма: до 0.3 мг/л. Высокое содержание придаёт воде металлический привкус и окрашивает её.</div>
                             </div>
                             <div>
                                 <label>Нитраты (мг/л)</label>
                                 <input type="number" name="nitrates_mg_l" step="0.1" value="<?= $last_raw_test['nitrates_mg_l'] ?? 20.0 ?>">
-                                <div class="field-hint">Норма: до 45 мг/л</div>
+                                <div class="field-hint">Норма: до 45 мг/л. Показатель загрязнения, высокие концентрации опасны для здоровья, особенно младенцев.</div>
                             </div>
                             <div>
                                 <label>Фториды (мг/л)</label>
                                 <input type="number" name="fluorides_mg_l" step="0.01" value="<?= $last_raw_test['fluorides_mg_l'] ?? 1.0 ?>">
-                                <div class="field-hint">Норма: 0.6–1.5 мг/л</div>
+                                <div class="field-hint">Норма: 0.6–1.5 мг/л. Полезны для зубов в малых концентрациях, но вредны при превышении.</div>
                             </div>
                             <div>
                                 <label>Хлориды (мг/л)</label>
                                 <input type="number" name="chlorides_mg_l" value="<?= $last_raw_test['chlorides_mg_l'] ?? 100 ?>">
-                                <div class="field-hint">Норма: до 250 мг/л</div>
+                                <div class="field-hint">Норма: до 250 мг/л. Влияют на вкус воды, высокие концентрации придают солёный привкус.</div>
                             </div>
                             <div>
                                 <label>Сульфаты (мг/л)</label>
                                 <input type="number" name="sulfates_mg_l" value="<?= $last_raw_test['sulfates_mg_l'] ?? 150 ?>">
-                                <div class="field-hint">Норма: до 500 мг/л</div>
+                                <div class="field-hint">Норма: до 500 мг/л. Могут вызывать послабляющий эффект при высоких концентрациях.</div>
                             </div>
                         </div>
                     </div>
@@ -541,19 +556,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="field-hint">Показатели безопасности воды по микробиологическим параметрам</div>
                         <div class="checkbox-group">
                             <div class="checkbox-item">
-                                <input type="checkbox" name="coliforms_100ml" id="coliforms">
+                                <input type="checkbox" name="coliforms_100ml" id="coliforms" <?= (isset($last_raw_test['coliforms_100ml']) && $last_raw_test['coliforms_100ml']) ? 'checked' : '' ?>>
                                 <label for="coliforms">Колиформы</label>
-                                <div class="field-hint">Обнаружение в 100 мл воды - недопустимо</div>
+                                <div class="field-hint">Обнаружение в 100 мл воды - недопустимо. Показатель фекального загрязнения, наличие указывает на возможное присутствие патогенных бактерий.</div>
                             </div>
                             <div class="checkbox-item">
-                                <input type="checkbox" name="thermotolerant_coliforms_100ml" id="thermotolerant">
+                                <input type="checkbox" name="thermotolerant_coliforms_100ml" id="thermotolerant" <?= (isset($last_raw_test['thermotolerant_coliforms_100ml']) && $last_raw_test['thermotolerant_coliforms_100ml']) ? 'checked' : '' ?>>
                                 <label for="thermotolerant">Термотолерантные колиформы</label>
-                                <div class="field-hint">Обнаружение в 100 мл воды - недопустимо</div>
+                                <div class="field-hint">Обнаружение в 100 мл воды - недопустимо. Более специфичный показатель фекального загрязнения, включая кишечную палочку.</div>
                             </div>
                             <div class="checkbox-item">
-                                <input type="checkbox" name="pseudomonas_250ml" id="pseudomonas">
+                                <input type="checkbox" name="pseudomonas_250ml" id="pseudomonas" <?= (isset($last_raw_test['pseudomonas_250ml']) && $last_raw_test['pseudomonas_250ml']) ? 'checked' : '' ?>>
                                 <label for="pseudomonas">Pseudomonas</label>
-                                <div class="field-hint">Обнаружение в 250 мл воды - недопустимо</div>
+                                <div class="field-hint">Обнаружение в 250 мл воды - недопустимо. Условно-патогенная бактерия, может вызывать инфекции у ослабленных людей.</div>
                             </div>
                         </div>
                         <div class="field-hint">Любое обнаружение — автоматический брак.</div>
@@ -565,12 +580,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div>
                                 <label>ОМЧ (КОЕ/мл)</label>
                                 <input type="number" name="omch_cfu_ml" value="<?= $last_raw_test['omch_cfu_ml'] ?? 50 ?>">
-                                <div class="field-hint">Норма: до 100 КОЕ/мл</div>
+                                <div class="field-hint">Норма: до 100 КОЕ/мл. Общее микробное число, показывает общее количество жизнеспособных микроорганизмов.</div>
                             </div>
                             <div>
                                 <label>Дрожжи/плесени (КОЕ/мл)</label>
                                 <input type="number" name="yeast_mold_cfu_ml" value="<?= $last_raw_test['yeast_mold_cfu_ml'] ?? 20 ?>">
-                                <div class="field-hint">Норма: до 10 КОЕ/мл</div>
+                                <div class="field-hint">Норма: до 10 КОЕ/мл. Показывает наличие дрожжевых и плесневых грибов, может указывать на биологическое загрязнение.</div>
                             </div>
                         </div>
                     </div>
@@ -633,34 +648,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div>
                                 <label>Запах</label>
                                 <select name="odor">
-                                    <option value="Без постороннего">Без постороннего</option>
-                                    <option value="Посторонний">Посторонний</option>
+                                    <option value="Без постороннего" <?= (isset($last_analysis['odor']) && $last_analysis['odor'] == 'Без постороннего') ? 'selected' : '' ?>>Без постороннего</option>
+                                    <option value="Посторонний" <?= (isset($last_analysis['odor']) && $last_analysis['odor'] == 'Посторонний') ? 'selected' : '' ?>>Посторонний</option>
                                 </select>
-                                <div class="field-hint">Должен быть без постороннего запаха</div>
+                                <div class="field-hint">Должен быть без постороннего запаха. Влияет на потребительские свойства воды.</div>
                             </div>
                             <div>
                                 <label>Привкус</label>
                                 <select name="taste">
-                                    <option value="Отсутствует">Отсутствует</option>
-                                    <option value="Присутствует">Присутствует</option>
+                                    <option value="Отсутствует" <?= (isset($last_analysis['taste']) && $last_analysis['taste'] == 'Отсутствует') ? 'selected' : '' ?>>Отсутствует</option>
+                                    <option value="Присутствует" <?= (isset($last_analysis['taste']) && $last_analysis['taste'] == 'Присутствует') ? 'selected' : '' ?>>Присутствует</option>
                                 </select>
-                                <div class="field-hint">Должен быть без постороннего привкуса</div>
+                                <div class="field-hint">Должен быть без постороннего привкуса. Влияет на вкусовые качества воды.</div>
                             </div>
                             <div>
                                 <label>Прозрачность</label>
                                 <select name="transparency">
-                                    <option value="Прозрачная">Прозрачная</option>
-                                    <option value="Мутная">Мутная</option>
+                                    <option value="Прозрачная" <?= (isset($last_analysis['transparency']) && $last_analysis['transparency'] == 'Прозрачная') ? 'selected' : '' ?>>Прозрачная</option>
+                                    <option value="Мутная" <?= (isset($last_analysis['transparency']) && $last_analysis['transparency'] == 'Мутная') ? 'selected' : '' ?>>Мутная</option>
                                 </select>
-                                <div class="field-hint">Вода должна быть прозрачной</div>
+                                <div class="field-hint">Вода должна быть прозрачной. Показывает отсутствие взвешенных частиц.</div>
                             </div>
                             <div>
                                 <label>Цвет</label>
                                 <select name="color">
-                                    <option value="Не окрашена">Не окрашена</option>
-                                    <option value="Окрашена">Окрашена</option>
+                                    <option value="Не окрашена" <?= (isset($last_analysis['color']) && $last_analysis['color'] == 'Не окрашена') ? 'selected' : '' ?>>Не окрашена</option>
+                                    <option value="Окрашена" <?= (isset($last_analysis['color']) && $last_analysis['color'] == 'Окрашена') ? 'selected' : '' ?>>Окрашена</option>
                                 </select>
-                                <div class="field-hint">Вода не должна быть окрашена</div>
+                                <div class="field-hint">Вода не должна быть окрашена. Показывает отсутствие примесей, влияющих на цвет.</div>
                             </div>
                         </div>
                     </div>
@@ -671,32 +686,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div>
                                 <label>pH</label>
                                 <input type="number" name="ph" step="0.01" value="<?= $last_analysis['ph'] ?? 7.2 ?>">
-                                <div class="field-hint">Норма: 6.5–9.0</div>
+                                <div class="field-hint">Норма: 6.5–9.0. Показывает кислотность/щелочность воды, влияет на вкус и коррозионные свойства.</div>
                             </div>
                             <div>
                                 <label>Жёсткость (ммоль/л)</label>
                                 <input type="number" name="hardness" step="0.1" value="<?= $last_analysis['hardness_mmol'] ?? 4.0 ?>">
-                                <div class="field-hint">Норма: до 7.0 ммоль/л</div>
+                                <div class="field-hint">Норма: до 7.0 ммоль/л. Определяет количество солей кальция и магния, влияет на вкус и образование накипи.</div>
                             </div>
                             <div>
                                 <label>Сухой остаток (мг/л)</label>
                                 <input type="number" name="dry_residue" value="<?= $last_analysis['dry_residue_mg_l'] ?? 500 ?>">
-                                <div class="field-hint">Норма: до 1000 мг/л</div>
+                                <div class="field-hint">Норма: до 1000 мг/л. Общее количество растворённых веществ, влияет на вкус воды.</div>
                             </div>
                             <div>
                                 <label>Железо (мг/л)</label>
                                 <input type="number" name="iron" step="0.001" value="<?= $last_analysis['iron_mg_l'] ?? 0.1 ?>">
-                                <div class="field-hint">Норма: до 0.3 мг/л</div>
+                                <div class="field-hint">Норма: до 0.3 мг/л. Высокое содержание придаёт воде металлический привкус и окрашивает её.</div>
                             </div>
                             <div>
                                 <label>Нитраты (мг/л)</label>
                                 <input type="number" name="nitrates" step="0.1" value="<?= $last_analysis['nitrates_mg_l'] ?? 20.0 ?>">
-                                <div class="field-hint">Норма: до 45 мг/л</div>
+                                <div class="field-hint">Норма: до 45 мг/л. Показатель загрязнения, высокие концентрации опасны для здоровья, особенно младенцев.</div>
                             </div>
                             <div>
                                 <label>Фториды (мг/л)</label>
                                 <input type="number" name="fluorides" step="0.01" value="<?= $last_analysis['fluorides_mg_l'] ?? 1.0 ?>">
-                                <div class="field-hint">Норма: 0.6–1.5 мг/л</div>
+                                <div class="field-hint">Норма: 0.6–1.5 мг/л. Полезны для зубов в малых концентрациях, но вредны при превышении.</div>
                             </div>
                         </div>
                     </div>
@@ -704,17 +719,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <label>Микробиология</label>
                         <div class="checkbox-group">
                             <div class="checkbox-item">
-                                <input type="checkbox" name="coliforms_detected" id="c1">
+                                <input type="checkbox" name="coliforms_detected" id="c1" <?= (isset($last_analysis['coliforms_detected']) && $last_analysis['coliforms_detected']) ? 'checked' : '' ?>>
                                 <label for="c1">Колиформы</label>
                                 <div class="field-hint">Обнаружение недопустимо</div>
                             </div>
                             <div class="checkbox-item">
-                                <input type="checkbox" name="thermotolerant_coliforms_detected" id="c2">
+                                <input type="checkbox" name="thermotolerant_coliforms_detected" id="c2" <?= (isset($last_analysis['thermotolerant_coliforms_detected']) && $last_analysis['thermotolerant_coliforms_detected']) ? 'checked' : '' ?>>
                                 <label for="c2">Термотолерантные колиформы</label>
                                 <div class="field-hint">Обнаружение недопустимо</div>
                             </div>
                             <div class="checkbox-item">
-                                <input type="checkbox" name="pseudomonas_detected" id="c3">
+                                <input type="checkbox" name="pseudomonas_detected" id="c3" <?= (isset($last_analysis['pseudomonas_detected']) && $last_analysis['pseudomonas_detected']) ? 'checked' : '' ?>>
                                 <label for="c3">Pseudomonas</label>
                                 <div class="field-hint">Обнаружение недопустимо</div>
                             </div>
@@ -727,12 +742,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div>
                                 <label>ОМЧ (КОЕ/мл)</label>
                                 <input type="number" name="omch" value="<?= $last_analysis['omch_cfu_ml'] ?? 50 ?>">
-                                <div class="field-hint">Норма: до 100 КОЕ/мл</div>
+                                <div class="field-hint">Норма: до 100 КОЕ/мл. Общее микробное число, показывает общее количество жизнеспособных микроорганизмов.</div>
                             </div>
                             <div>
                                 <label>Дрожжи/плесени (КОЕ/мл)</label>
                                 <input type="number" name="yeast" value="<?= $last_analysis['yeast_mold_cfu_ml'] ?? 20 ?>">
-                                <div class="field-hint">Норма: до 100 КОЕ/мл</div>
+                                <div class="field-hint">Норма: до 100 КОЕ/мл. Показывает наличие дрожжевых и плесневых грибов, может указывать на биологическое загрязнение.</div>
                             </div>
                         </div>
                     </div>

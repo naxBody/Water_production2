@@ -1,9 +1,9 @@
 <?php
 // === НАСТРОЙКИ БД ===
-$host = 'localhost';
-$db   = 'bottled_water_control';
-$user = 'root'; // ← ЗАМЕНИ НА СВОЙ
-$pass = '';     // ← ЗАМЕНИ НА СВОЙ
+$host = $_ENV['DB_HOST'] ?? 'localhost';
+$db   = $_ENV['DB_NAME'] ?? 'bottled_water_control';
+$user = $_ENV['DB_USER'] ?? 'root'; // ← ЗАМЕНИ НА СВОЙ
+$pass = $_ENV['DB_PASS'] ?? '';     // ← ЗАМЕНИ НА СВОЙ
 $charset = 'utf8mb4';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
@@ -17,6 +17,19 @@ try {
     $pdo = new PDO($dsn, $user, $pass, $options);
 } catch (\PDOException $e) {
     die("❌ Ошибка БД: " . htmlspecialchars($e->getMessage()));
+}
+
+// === CSRF ТОКЕН ===
+session_start();
+function generateCSRFToken() {
+    if (!isset($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function validateCSRFToken($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
 }
 
 // === ЗАГРУЗКА ДАННЫХ ===
@@ -40,11 +53,17 @@ $message_type = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        // Проверка CSRF токена
+        if (!isset($_POST['csrf_token']) || !validateCSRFToken($_POST['csrf_token'])) {
+            throw new Exception('Неверный CSRF токен. Попробуйте отправить форму снова.');
+        }
+        
         $batch_id = (int)$_POST['batch_id'];
         $client_id = (int)$_POST['client_id'];
         $bottles = (int)$_POST['bottles_shipped'];
         $waybill = trim($_POST['waybill_number']);
         $shipped_by = (int)$_POST['shipped_by'];
+        $notes = trim($_POST['notes'] ?? '');
 
         // Валидация
         if (!$batch_id || !$client_id || $bottles <= 0 || !$waybill || !$shipped_by) {
@@ -75,9 +94,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Сохранение отгрузки
         $pdo->prepare("
-            INSERT INTO shipments (batch_id, client_id, shipment_date, bottles_shipped, waybill_number, shipped_by)
-            VALUES (?, ?, CURDATE(), ?, ?, ?)
-        ")->execute([$batch_id, $client_id, $bottles, $waybill, $shipped_by_name]);
+            INSERT INTO shipments (batch_id, client_id, shipment_date, bottles_shipped, waybill_number, shipped_by, notes)
+            VALUES (?, ?, CURDATE(), ?, ?, ?, ?)
+        ")->execute([$batch_id, $client_id, $bottles, $waybill, $shipped_by_name, $notes]);
 
         // Обновление партии
         $pdo->prepare("UPDATE batches SET remaining_bottles = remaining_bottles - ? WHERE id = ?")->execute([$bottles, $batch_id]);
@@ -113,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // === ПОСЛЕДНИЕ ОТГРУЗКИ ===
 $recent_shipments = $pdo->query("
-    SELECT s.waybill_number, s.shipment_date, s.bottles_shipped, s.shipped_by,
+    SELECT s.waybill_number, s.shipment_date, s.bottles_shipped, s.shipped_by, s.notes,
            c.name AS client, b.batch_number, b.bottling_datetime AS production_date, b.expiry_date, 
            wb.name AS brand, bt.volume_l
     FROM shipments s
@@ -291,7 +310,13 @@ $recent_shipments = $pdo->query("
                         </div>
                     </div>
 
+                    <div class="form-group">
+                        <label for="notes">Примечания</label>
+                        <textarea name="notes" id="notes" placeholder="Дополнительная информация об отгрузке" rows="2"></textarea>
+                    </div>
+
                     <input type="hidden" name="batch_number" id="hidden_batch_number">
+                    <input type="hidden" name="csrf_token" value="<?= generateCSRFToken() ?>">
                     <button type="submit" class="btn"><i class="fas fa-truck"></i> Оформить отгрузку</button>
                 </form>
             <?php endif; ?>
@@ -352,6 +377,7 @@ $recent_shipments = $pdo->query("
                             <th onclick="sortTable(5)" style="cursor: pointer;">ТТН <i class="fas fa-sort"></i></th>
                             <th onclick="sortTable(6)" style="cursor: pointer;">Дата <i class="fas fa-sort"></i></th>
                             <th onclick="sortTable(7)" style="cursor: pointer;">Ответственный <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(8)" style="cursor: pointer;">Примечания <i class="fas fa-sort"></i></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -371,6 +397,7 @@ $recent_shipments = $pdo->query("
                                 <td><?= htmlspecialchars($s['waybill_number']) ?></td>
                                 <td><?= date('d.m.Y', strtotime($s['shipment_date'])) ?></td>
                                 <td><?= htmlspecialchars($s['shipped_by']) ?></td>
+                                <td><?= htmlspecialchars($s['notes'] ?? '') ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>

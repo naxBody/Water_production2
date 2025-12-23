@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // === ПОСЛЕДНИЕ ОТГРУЗКИ ===
 $recent_shipments = $pdo->query("
     SELECT s.waybill_number, s.shipment_date, s.bottles_shipped, s.shipped_by, s.notes,
-           c.name AS client, b.batch_number, b.bottling_datetime AS production_date, 
+           c.name AS client, b.batch_number, b.bottling_datetime, 
            DATE_ADD(b.bottling_datetime, INTERVAL b.shelf_life_months MONTH) AS expiry_date,
            wb.name AS brand, bt.volume_l
     FROM shipments s

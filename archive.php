@@ -114,22 +114,99 @@ if (isset($_GET['batch_id'])) {
         .stat-label { color: var(--text-secondary); font-size: 14px; }
         .stat-trend { color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 5px; margin-top: 4px; }
 
-        /* Список партий */
-        .archive-list {
-            background: var(--card-bg); border-radius: 16px; overflow: hidden; border: 1px solid var(--border);
-            margin-bottom: 24px;
+        /* Статистика */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 24px 0;
         }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 14px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-        th { color: var(--text-secondary); font-weight: 600; background: rgba(0,0,0,0.2); }
-        tr:last-child td { border-bottom: none; }
-        .batch-link { color: var(--accent); text-decoration: none; font-weight: 600; }
-        .batch-link:hover { text-decoration: underline; }
-        .status { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        .status--good { background: rgba(129,199,132,0.2); color: var(--success); }
-        .status--partial { background: rgba(255,179,0,0.2); color: var(--warning); }
-        .status--done { background: rgba(129,199,132,0.2); color: var(--success); }
-        .status--brake { background: rgba(244,67,80,0.2); color: var(--danger); }
+        .stat-card {
+            background: var(--card-bg); 
+            padding: 20px; 
+            border-radius: 12px; 
+            text-align: center; 
+            border: 1px solid var(--border);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+        }
+
+        /* Фильтры */
+        .filters {
+            background: var(--card-bg);
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            margin: 20px 0;
+        }
+
+        /* Улучшенная таблица */
+        .archive-list {
+            background: var(--card-bg); 
+            border-radius: 16px; 
+            overflow: hidden; 
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+        }
+        th, td { 
+            padding: 14px 12px; 
+            text-align: left; 
+            border-bottom: 1px solid var(--border); 
+        }
+        th { 
+            color: var(--text-secondary); 
+            font-weight: 600; 
+            background: rgba(0,0,0,0.2); 
+        }
+        tr:last-child td { 
+            border-bottom: none; 
+        }
+        tr:hover {
+            background: rgba(79, 195, 247, 0.05);
+        }
+        .batch-link { 
+            color: var(--accent); 
+            text-decoration: none; 
+            font-weight: 600; 
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .batch-link:hover { 
+            background: rgba(79, 195, 247, 0.1);
+            text-decoration: underline;
+        }
+        .status { 
+            padding: 4px 10px; 
+            border-radius: 20px; 
+            font-size: 12px; 
+            font-weight: 600; 
+            display: inline-block;
+        }
+        .status--good { 
+            background: rgba(129,199,132,0.2); 
+            color: var(--success); 
+        }
+        .status--partial { 
+            background: rgba(255,179,0,0.2); 
+            color: var(--warning); 
+        }
+        .status--done { 
+            background: rgba(129,199,132,0.2); 
+            color: var(--success); 
+        }
+        .status--brake { 
+            background: rgba(244,67,80,0.2); 
+            color: var(--danger); 
+        }
 
         /* Модальное окно */
         .modal {
@@ -216,56 +293,106 @@ $shipped_batches = $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'П�
 $partial_batches = $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Частично отгружена'")->fetchColumn();
 ?>
 
-        <!-- Новая информация в начале страницы -->
-        <div class="summary-container" style="margin-bottom: 20px;">
-            <div class="summary-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 16px;">
-                <div class="summary-card" style="background: var(--card-bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                    <h3 style="color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-boxes"></i> Производство
-                    </h3>
-                    <div style="font-size: 28px; font-weight: 700; color: var(--accent); margin: 8px 0;"><?= number_format($total_batches, 0, ' ', ' ') ?></div>
-                    <div style="color: var(--text-secondary); font-size: 14px;">Всего партий произведено</div>
-                    <div style="margin-top: 8px; display: flex; justify-content: space-between; font-size: 13px;">
-                        <span style="color: var(--success);"><i class="fas fa-check-circle"></i> Годных: <?= number_format($good_batches, 0, ' ', ' ') ?></span>
-                        <span style="color: var(--danger);"><i class="fas fa-times-circle"></i> Брак: <?= number_format($bad_batches, 0, ' ', ' ') ?></span>
-                    </div>
+        <!-- Улучшенная статистика -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value"><?= number_format($total_batches, 0, ' ', ' ') ?></div>
+                <div class="stat-label">Всего партий</div>
+                <div class="stat-trend"><i class="fas fa-boxes"></i> Производство</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= number_format($total_shipped_bottles, 0, ' ', ' ') ?></div>
+                <div class="stat-label">Бутылок отгружено</div>
+                <div class="stat-trend"><i class="fas fa-truck"></i> Реализация</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= $compliance_rate ?>%</div>
+                <div class="stat-label">Соответствие стандартам</div>
+                <div class="stat-trend"><i class="fas fa-shield-alt"></i> Качество</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= $top_brand_name ?></div>
+                <div class="stat-label">Лидер по производству</div>
+                <div class="stat-trend"><i class="fas fa-crown"></i> <?= $top_brand_count ?> партий</div>
+            </div>
+        </div>
+
+        <!-- Дополнительные метрики -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value"><?= number_format($good_batches, 0, ' ', ' ') ?></div>
+                <div class="stat-label">Годных партий</div>
+                <div class="stat-trend"><i class="fas fa-check-circle"></i> Качество продукции</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= number_format($bad_batches, 0, ' ', ' ') ?></div>
+                <div class="stat-label">Брак</div>
+                <div class="stat-trend"><i class="fas fa-exclamation-triangle"></i> Необходимо анализировать</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= number_format($recent_activity, 0, ' ', ' ') ?></div>
+                <div class="stat-label">Партий за 7 дней</div>
+                <div class="stat-trend"><i class="fas fa-fire"></i> Активность производства</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= $avg_production_time_formatted ?></div>
+                <div class="stat-label">Среднее время обработки</div>
+                <div class="stat-trend"><i class="fas fa-clock"></i> Эффективность</div>
+            </div>
+        </div>
+
+        <!-- Фильтры -->
+        <div class="filters" style="background: var(--card-bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin: 20px 0;">
+            <h3 style="color: var(--accent); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-filter"></i> Фильтры
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                <div>
+                    <label style="display: block; color: var(--text-secondary); margin-bottom: 6px;">Статус</label>
+                    <select id="filter-status" style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
+                        <option value="">Все статусы</option>
+                        <option value="Годная">Годная</option>
+                        <option value="Брак">Брак</option>
+                        <option value="Частично отгружена">Частично отгружена</option>
+                        <option value="Полностью реализована">Полностью реализована</option>
+                    </select>
                 </div>
-                
-                <div class="summary-card" style="background: var(--card-bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                    <h3 style="color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-truck-moving"></i> Реализация
-                    </h3>
-                    <div style="font-size: 28px; font-weight: 700; color: var(--accent); margin: 8px 0;"><?= number_format($total_shipped_bottles, 0, ' ', ' ') ?></div>
-                    <div style="color: var(--text-secondary); font-size: 14px;">Всего бутылок отгружено</div>
-                    <div style="margin-top: 8px; display: flex; justify-content: space-between; font-size: 13px;">
-                        <span style="color: var(--success);"><i class="fas fa-check"></i> Реализовано: <?= number_format($shipped_batches, 0, ' ', ' ') ?></span>
-                        <span style="color: var(--warning);"><i class="fas fa-pause"></i> В наличии: <?= number_format($partial_batches, 0, ' ', ' ') ?></span>
-                    </div>
+                <div>
+                    <label style="display: block; color: var(--text-secondary); margin-bottom: 6px;">Марка</label>
+                    <select id="filter-brand" style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
+                        <option value="">Все марки</option>
+                        <?php 
+                        $brands = $pdo->query("SELECT DISTINCT name FROM water_brands ORDER BY name")->fetchAll();
+                        foreach ($brands as $brand): ?>
+                            <option value="<?= htmlspecialchars($brand['name']) ?>"><?= htmlspecialchars($brand['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-                
-                <div class="summary-card" style="background: var(--card-bg); padding: 16px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                    <h3 style="color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-chart-line"></i> Качество
-                    </h3>
-                    <div style="font-size: 28px; font-weight: 700; color: var(--accent); margin: 8px 0;"><?= $compliance_rate ?>%</div>
-                    <div style="color: var(--text-secondary); font-size: 14px;">Соответствие стандартам</div>
-                    <div style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
-                        <i class="fas fa-bottle-water"></i> Лидер: <?= $top_brand_name ?> (<?= $top_brand_count ?> партий)
-                    </div>
+                <div>
+                    <label style="display: block; color: var(--text-secondary); margin-bottom: 6px;">Дата (от)</label>
+                    <input type="date" id="filter-date-from" style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
                 </div>
+                <div>
+                    <label style="display: block; color: var(--text-secondary); margin-bottom: 6px;">Дата (до)</label>
+                    <input type="date" id="filter-date-to" style="width: 100%; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
+                </div>
+            </div>
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+                <button id="apply-filters" style="padding: 8px 16px; background: var(--accent); color: var(--bg); border: none; border-radius: 6px; cursor: pointer;">Применить</button>
+                <button id="reset-filters" style="padding: 8px 16px; background: rgba(0,0,0,0.2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;">Сбросить</button>
             </div>
         </div>
         
         <!-- Разделитель -->
-        <div style="height: 16px;"></div>
+        <div style="height: 20px;"></div>
 
         <h2 style="color: var(--accent); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
-            <i class="fas fa-clipboard-list"></i> Подробный архив
+            <i class="fas fa-list"></i> Архив партий
         </h2>
 
         <!-- Список партий -->
         <div class="archive-list">
-            <table>
+            <table id="archiveTable">
                 <thead>
                     <tr>
                         <th>Партия</th>
@@ -385,6 +512,126 @@ $partial_batches = $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Ч�
                 document.getElementById('detailModal').style.display = 'none';
             }
         });
+        
+        // Функциональность фильтров
+        document.getElementById('apply-filters').addEventListener('click', applyFilters);
+        document.getElementById('reset-filters').addEventListener('click', resetFilters);
+        
+        function applyFilters() {
+            const statusFilter = document.getElementById('filter-status').value;
+            const brandFilter = document.getElementById('filter-brand').value;
+            const dateFrom = document.getElementById('filter-date-from').value;
+            const dateTo = document.getElementById('filter-date-to').value;
+            
+            const rows = document.querySelectorAll('#archiveTable tbody tr');
+            
+            rows.forEach(row => {
+                const status = row.cells[4].textContent.trim();
+                const brand = row.cells[1].textContent.split('\n')[0];
+                const date = row.cells[3].textContent.trim();
+                
+                let showRow = true;
+                
+                // Фильтр по статусу
+                if (statusFilter && !status.includes(statusFilter)) {
+                    showRow = false;
+                }
+                
+                // Фильтр по марке
+                if (brandFilter && !brand.includes(brandFilter)) {
+                    showRow = false;
+                }
+                
+                // Фильтр по дате
+                if (dateFrom || dateTo) {
+                    const rowDate = new Date(date.split('.').reverse().join('-'));
+                    if (dateFrom) {
+                        const fromDate = new Date(dateFrom);
+                        if (rowDate < fromDate) {
+                            showRow = false;
+                        }
+                    }
+                    if (dateTo) {
+                        const toDate = new Date(dateTo);
+                        if (rowDate > toDate) {
+                            showRow = false;
+                        }
+                    }
+                }
+                
+                row.style.display = showRow ? '' : 'none';
+            });
+        }
+        
+        function resetFilters() {
+            document.getElementById('filter-status').value = '';
+            document.getElementById('filter-brand').value = '';
+            document.getElementById('filter-date-from').value = '';
+            document.getElementById('filter-date-to').value = '';
+            
+            const rows = document.querySelectorAll('#archiveTable tbody tr');
+            rows.forEach(row => {
+                row.style.display = '';
+            });
+        }
+        
+        // Поиск по таблице
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Поиск по архиву...';
+        searchInput.id = 'searchInput';
+        searchInput.style = 'width: 100%; padding: 10px; margin: 10px 0; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; color: var(--text);';
+        
+        const tableContainer = document.querySelector('.archive-list');
+        tableContainer.parentNode.insertBefore(searchInput, tableContainer);
+        
+        searchInput.addEventListener('keyup', function() {
+            const searchTerm = this.value.toLowerCase();
+            const rows = document.querySelectorAll('#archiveTable tbody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        });
+        
+        // Добавляем кнопку экспорта
+        const exportBtn = document.createElement('button');
+        exportBtn.innerHTML = '<i class="fas fa-file-export"></i> Экспорт в Excel';
+        exportBtn.style = 'padding: 10px 16px; background: var(--accent); color: var(--bg); border: none; border-radius: 6px; cursor: pointer; margin-bottom: 15px; display: inline-flex; align-items: center; gap: 8px;';
+        exportBtn.addEventListener('click', exportToExcel);
+        
+        const archiveHeader = document.querySelector('h2');
+        archiveHeader.parentNode.insertBefore(exportBtn, archiveHeader.nextSibling);
+        
+        function exportToExcel() {
+            const table = document.getElementById('archiveTable');
+            const rows = Array.from(table.querySelectorAll('tr'));
+            
+            let csv = '';
+            rows.forEach(row => {
+                const cols = Array.from(row.querySelectorAll('th, td'));
+                const rowData = cols.map(col => {
+                    let data = col.textContent.replace(/[\r\n]+/g, ' ');
+                    // Убираем статусы и форматирование
+                    if (col.querySelector('.status')) {
+                        data = col.querySelector('.status').textContent.trim();
+                    }
+                    return '"' + data + '"';
+                }).join(';');
+                csv += rowData + '\n';
+            });
+            
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'archive_export_' + new Date().toISOString().slice(0, 10) + '.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
     </script>
 
     <?php if ($detail): ?>

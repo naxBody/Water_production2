@@ -44,8 +44,8 @@ $ready_batches = $pdo->query("
     ORDER BY b.bottling_datetime DESC
 ")->fetchAll();
 
-$clients = $pdo->query("SELECT id, name, contact_person, phone FROM clients ORDER BY name")->fetchAll();
-$shippers = $pdo->query("SELECT id, full_name, position FROM operators WHERE role = 'shipper' ORDER BY full_name")->fetchAll();
+$clients = $pdo->query("SELECT id, name, contact_person FROM clients ORDER BY name")->fetchAll();
+$shippers = $pdo->query("SELECT id, full_name FROM operators WHERE role = 'shipper' ORDER BY full_name")->fetchAll();
 
 // === ОБРАБОТКА ФОРМЫ ===
 $message = '';
@@ -262,7 +262,7 @@ $recent_shipments = $pdo->query("
                                 <?php foreach ($clients as $c): ?>
                                     <option value="<?= $c['id'] ?>" 
                                         data-contact="<?= htmlspecialchars($c['contact_person'] ?? '') ?>" 
-                                        data-phone="<?= htmlspecialchars($c['phone'] ?? '') ?>">
+                                        data-phone="">
                                         <?= htmlspecialchars($c['name']) ?>
                                     </option>
                                 <?php endforeach; ?>
@@ -293,7 +293,7 @@ $recent_shipments = $pdo->query("
                         <select name="shipped_by" id="shipped_by" required>
                             <option value="">Выберите ответственного</option>
                             <?php foreach ($shippers as $s): ?>
-                                <option value="<?= $s['id'] ?>" data-position="<?= htmlspecialchars($s['position'] ?? '') ?>"><?= htmlspecialchars($s['full_name']) ?></option>
+                                <option value="<?= $s['id'] ?>" data-position=""><?= htmlspecialchars($s['full_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -473,12 +473,17 @@ $recent_shipments = $pdo->query("
             const contactSpan = document.getElementById('client-contact');
             const phoneSpan = document.getElementById('client-phone');
             
-            if (contact || phone) {
-                contactSpan.textContent = contact || 'Не указано';
-                phoneSpan.textContent = phone || 'Не указано';
+            if (contact) {
+                contactSpan.textContent = contact;
                 clientInfo.style.display = 'block';
             } else {
-                clientInfo.style.display = 'none';
+                contactSpan.textContent = '';
+            }
+            
+            if (phone && phone.trim() !== '') {
+                phoneSpan.textContent = phone;
+            } else {
+                phoneSpan.textContent = 'Телефон не указан';
             }
         }
         

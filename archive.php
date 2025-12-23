@@ -117,11 +117,15 @@ if (isset($_GET['batch_id'])) {
             gap: 20px;
             margin: 24px 0;
         }
+        .stats-grid:first-of-type {
+            margin-bottom: 12px;
+        }
         .stat-card {
             background: var(--card-bg); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border);
         }
         .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); margin: 8px 0; }
         .stat-label { color: var(--text-secondary); font-size: 14px; }
+        .stat-trend { color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 5px; margin-top: 4px; }
 
         /* Список партий */
         .archive-list {
@@ -184,25 +188,95 @@ if (isset($_GET['batch_id'])) {
             <div class="subtitle">Все данные с момента запуска системы. Автоматически обновляется при каждом действии.</div>
         </header>
 
-        <!-- Статистика -->
+        <?php
+// === ДОПОЛНИТЕЛЬНАЯ СТАТИСТИКА ДЛЯ АРХИВА ===
+// Вычисление дополнительных метрик
+$total_produced_bottles = $pdo->query("SELECT COALESCE(SUM(total_bottles), 0) FROM batches")->fetchColumn();
+$total_shipped_bottles = $pdo->query("SELECT COALESCE(SUM(bottles_shipped), 0) FROM shipments")->fetchColumn();
+$top_brand = $pdo->query("
+    SELECT wb.name, COUNT(*) as cnt 
+    FROM batches b 
+    JOIN water_brands wb ON b.brand_id = wb.id 
+    GROUP BY wb.name 
+    ORDER BY cnt DESC 
+    LIMIT 1
+")->fetch();
+$avg_production_time = $pdo->query("
+    SELECT AVG(TIMESTAMPDIFF(HOUR, t.started_at, t.finished_at)) as avg_hours
+    FROM water_treatments t
+")->fetchColumn();
+$compliance_rate = $pdo->query("
+    SELECT 
+        ROUND(COALESCE((SUM(CASE WHEN tw.is_compliant = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 0), 2) as rate
+    FROM treated_water_tests tw
+    JOIN batches b ON tw.id = b.treated_test_id
+")->fetchColumn();
+$recent_activity = $pdo->query("
+    SELECT COUNT(*) 
+    FROM batches 
+    WHERE bottling_datetime >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+")->fetchColumn();
+
+// Форматирование значений
+$top_brand_name = $top_brand ? htmlspecialchars($top_brand['name']) : 'Нет данных';
+$top_brand_count = $top_brand ? $top_brand['cnt'] : 0;
+$avg_production_time_formatted = $avg_production_time ? round($avg_production_time, 1).' ч' : 'N/A';
+?>
+
+        <!-- Улучшенная статистика -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-value"><?= number_format($total_batches, 0, ' ', ' ') ?></div>
-                <div class="stat-label">Всего партий</div>
+                <div class="stat-value"><?= number_format($total_produced_bottles, 0, ' ', ' ') ?></div>
+                <div class="stat-label">Всего бутылок произведено</div>
+                <div class="stat-trend"><i class="fas fa-chart-line"></i> Общий объем производства</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= $compliance_rate ?>%</div>
+                <div class="stat-label">Соответствие стандартам</div>
+                <div class="stat-trend"><i class="fas fa-shield-alt"></i> Качество продукции</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= $top_brand_name ?></div>
+                <div class="stat-label">Лидер по производству</div>
+                <div class="stat-trend"><i class="fas fa-crown"></i> <?= $top_brand_count ?> партий</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= $avg_production_time_formatted ?></div>
+                <div class="stat-label">Среднее время обработки</div>
+                <div class="stat-trend"><i class="fas fa-clock"></i> Эффективность процесса</div>
+            </div>
+        </div>
+        
+        <!-- Дополнительные метрики -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value"><?= number_format($total_shipped_bottles, 0, ' ', ' ') ?></div>
+                <div class="stat-label">Бутылок отгружено</div>
+                <div class="stat-trend"><i class="fas fa-truck"></i> Реализация продукции</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value"><?= number_format($recent_activity, 0, ' ', ' ') ?></div>
+                <div class="stat-label">Партий за 7 дней</div>
+                <div class="stat-trend"><i class="fas fa-fire"></i> Активность производства</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value"><?= number_format($total_batches - $total_rejected, 0, ' ', ' ') ?></div>
-                <div class="stat-label">Годных</div>
+                <div class="stat-label">Годных партий</div>
+                <div class="stat-trend"><i class="fas fa-check-circle"></i> Качество продукции</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value"><?= number_format($total_rejected, 0, ' ', ' ') ?></div>
                 <div class="stat-label">Брак</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value"><?= number_format($total_shipped, 0, ' ', ' ') ?></div>
-                <div class="stat-label">Отгрузок</div>
+                <div class="stat-trend"><i class="fas fa-exclamation-triangle"></i> Необходимо анализировать</div>
             </div>
         </div>
+
+        <!-- Разделитель -->
+        <div style="height: 20px;"></div>
+
+        <h2 style="color: var(--accent); margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+            <i class="fas fa-list"></i> Архив партий
+        </h2>
 
         <!-- Список партий -->
         <div class="archive-list">
@@ -244,8 +318,30 @@ if (isset($_GET['batch_id'])) {
             </table>
         </div>
 
-        <footer>
-            Все данные хранятся автоматически с момента регистрации. Соответствует ТР ТС 021/2011.
+        <footer style="margin-top: 40px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                <div>
+                    <h4 style="color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-info-circle"></i> Информация
+                    </h4>
+                    <p style="color: var(--text-secondary); font-size: 14px;">Все данные хранятся автоматически с момента регистрации. Соответствует ТР ТС 021/2011.</p>
+                </div>
+                <div>
+                    <h4 style="color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-shield-alt"></i> Безопасность
+                    </h4>
+                    <p style="color: var(--text-secondary); font-size: 14px;">Данные защищены и доступны только авторизованным пользователям.</p>
+                </div>
+                <div>
+                    <h4 style="color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-sync-alt"></i> Актуальность
+                    </h4>
+                    <p style="color: var(--text-secondary); font-size: 14px;">Информация обновляется в реальном времени при каждом действии.</p>
+                </div>
+            </div>
+            <div style="border-top: 1px solid var(--border); padding-top: 15px; text-align: center; color: var(--text-secondary);">
+                AquaTrack &copy; <?= date('Y') ?> | Система контроля качества бутилированной воды
+            </div>
         </footer>
     </div>
 

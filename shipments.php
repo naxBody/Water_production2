@@ -21,8 +21,8 @@ try {
 
 // === ЗАГРУЗКА ДАННЫХ ===
 $ready_batches = $pdo->query("
-    SELECT b.id, b.batch_number, b.remaining_bottles, wb.name AS brand, 
-           bt.volume_l, bt.material, b.bottling_datetime
+    SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, b.production_date, b.expiry_date,
+           wb.name AS brand, bt.volume_l, bt.material, b.bottles_produced, b.quality_status
     FROM batches b
     JOIN water_brands wb ON b.brand_id = wb.id
     JOIN bottle_types bt ON b.bottle_type_id = bt.id
@@ -30,8 +30,8 @@ $ready_batches = $pdo->query("
     ORDER BY b.bottling_datetime DESC
 ")->fetchAll();
 
-$clients = $pdo->query("SELECT id, name FROM clients ORDER BY name")->fetchAll();
-$shippers = $pdo->query("SELECT id, full_name FROM operators WHERE role = 'shipper' ORDER BY full_name")->fetchAll();
+$clients = $pdo->query("SELECT id, name, contact_person, phone FROM clients ORDER BY name")->fetchAll();
+$shippers = $pdo->query("SELECT id, full_name, position FROM operators WHERE role = 'shipper' ORDER BY full_name")->fetchAll();
 
 // === ОБРАБОТКА ФОРМЫ ===
 $message = '';
@@ -51,11 +51,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Проверка остатка
-        $batch = $pdo->prepare("SELECT remaining_bottles FROM batches WHERE id = ?");
+        $batch = $pdo->prepare("SELECT remaining_bottles, batch_number FROM batches WHERE id = ?");
         $batch->execute([$batch_id]);
-        $remaining = $batch->fetchColumn();
+        $batch_data = $batch->fetch();
+        $remaining = $batch_data['remaining_bottles'];
+        $batch_number = $batch_data['batch_number'];
+        
         if ($bottles > $remaining) {
-            throw new Exception('Нельзя отгрузить больше, чем осталось в партии.');
+            throw new Exception('Нельзя отгрузить больше, чем осталось в партии (' . $remaining . ' бут.).');
         }
 
         // Имя ответственного
@@ -65,6 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$shipped_by_name) {
             throw new Exception('Некорректный ответственный за отгрузку.');
         }
+
+        // Начинаем транзакцию для обеспечения целостности данных
+        $pdo->beginTransaction();
 
         // Сохранение отгрузки
         $pdo->prepare("
@@ -78,13 +84,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare("UPDATE batches SET status = 'Полностью реализована' WHERE id = ?")->execute([$batch_id]);
         }
 
-        $message = "✅ Отгрузка оформлена. Партия: " . $_POST['batch_number'];
+        $pdo->commit();
+
+        $message = "✅ Отгрузка оформлена. Партия: " . $batch_number . ", Клиент: " . htmlspecialchars($clients[array_search($client_id, array_column($clients, 'id'))]['name']);
         $message_type = 'success';
 
         // Обновляем список (чтобы убрать полностью отгруженные)
         $ready_batches = $pdo->query("
-            SELECT b.id, b.batch_number, b.remaining_bottles, wb.name AS brand, 
-                   bt.volume_l, bt.material, b.bottling_datetime
+            SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, b.production_date, b.expiry_date,
+                   wb.name AS brand, bt.volume_l, bt.material, b.bottles_produced, b.quality_status
             FROM batches b
             JOIN water_brands wb ON b.brand_id = wb.id
             JOIN bottle_types bt ON b.bottle_type_id = bt.id
@@ -93,6 +101,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ")->fetchAll();
 
     } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollback();
+        }
         $message = "❌ " . $e->getMessage();
         $message_type = 'error';
     }
@@ -100,12 +111,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // === ПОСЛЕДНИЕ ОТГРУЗКИ ===
 $recent_shipments = $pdo->query("
-    SELECT s.waybill_number, c.name AS client, s.bottles_shipped, s.shipment_date, b.batch_number
+    SELECT s.waybill_number, s.shipment_date, s.bottles_shipped, s.shipped_by,
+           c.name AS client, b.batch_number, b.production_date, b.expiry_date, 
+           wb.name AS brand, bt.volume_l
     FROM shipments s
     JOIN batches b ON s.batch_id = b.id
     JOIN clients c ON s.client_id = c.id
+    JOIN water_brands wb ON b.brand_id = wb.id
+    JOIN bottle_types bt ON b.bottle_type_id = bt.id
     ORDER BY s.shipment_date DESC
-    LIMIT 10
+    LIMIT 20
 ")->fetchAll();
 ?>
 <!DOCTYPE html>
@@ -150,11 +165,15 @@ $recent_shipments = $pdo->query("
             background: var(--card-bg); padding: 24px; border-radius: 16px; margin: 24px 0; border: 1px solid var(--border);
         }
         .section-title { font-size: 20px; margin-bottom: 20px; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+        .form-row { display: flex; gap: 20px; margin-bottom: 20px; }
+        .form-row .form-group { flex: 1; }
         .form-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 6px; font-weight: 600; }
         input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: #142c45; color: var(--text); }
         .btn { background: var(--accent-dark); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
         .btn:hover { opacity: 0.9; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; }
+        .info-row > div { flex: 1; min-width: 200px; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 16px; }
         th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid var(--border); }
@@ -194,37 +213,53 @@ $recent_shipments = $pdo->query("
                 <p class="empty">Нет партий, готовых к отгрузке. Сначала завершите производственный цикл.</p>
             <?php else: ?>
                 <form method="POST">
-                    <div class="form-group">
-                        <label for="batch_id">Партия *</label>
-                        <select name="batch_id" id="batch_id" required onchange="updateBatchInfo(this)">
-                            <option value="">Выберите партию</option>
-                            <?php foreach ($ready_batches as $b): ?>
-                                <option value="<?= $b['id'] ?>" data-number="<?= htmlspecialchars($b['batch_number']) ?>" data-remaining="<?= $b['remaining_bottles'] ?>">
-                                    <?= htmlspecialchars($b['batch_number']) ?> — <?= htmlspecialchars($b['brand']) ?>, <?= $b['volume_l'] ?> л (остаток: <?= number_format($b['remaining_bottles'], 0, ' ', ' ') ?> бут.)
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="batch_id">Партия *</label>
+                            <select name="batch_id" id="batch_id" required onchange="updateBatchInfo(this)">
+                                <option value="">Выберите партию</option>
+                                <?php foreach ($ready_batches as $b): ?>
+                                    <option value="<?= $b['id'] ?>" 
+                                        data-number="<?= htmlspecialchars($b['batch_number']) ?>" 
+                                        data-remaining="<?= $b['remaining_bottles'] ?>"
+                                        data-brand="<?= htmlspecialchars($b['brand']) ?>"
+                                        data-volume="<?= $b['volume_l'] ?>"
+                                        data-material="<?= htmlspecialchars($b['material']) ?>"
+                                        data-production="<?= date('d.m.Y', strtotime($b['production_date'])) ?>"
+                                        data-expiry="<?= date('d.m.Y', strtotime($b['expiry_date'])) ?>"
+                                        data-total="<?= $b['bottles_produced'] ?>">
+                                        <?= htmlspecialchars($b['batch_number']) ?> — <?= htmlspecialchars($b['brand']) ?>, <?= $b['volume_l'] ?> л (остаток: <?= number_format($b['remaining_bottles'], 0, ' ', ' ') ?> бут.)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="client_id">Контрагент *</label>
+                            <select name="client_id" id="client_id" required>
+                                <option value="">Выберите клиента</option>
+                                <?php foreach ($clients as $c): ?>
+                                    <option value="<?= $c['id'] ?>" 
+                                        data-contact="<?= htmlspecialchars($c['contact_person'] ?? '') ?>" 
+                                        data-phone="<?= htmlspecialchars($c['phone'] ?? '') ?>">
+                                        <?= htmlspecialchars($c['name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="client_id">Контрагент *</label>
-                        <select name="client_id" id="client_id" required>
-                            <option value="">Выберите клиента</option>
-                            <?php foreach ($clients as $c): ?>
-                                <option value="<?= $c['id'] ?>"><?= htmlspecialchars($c['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="bottles_shipped">Количество бутылок *</label>
+                            <input type="number" name="bottles_shipped" id="bottles_shipped" required min="1" placeholder="Введите количество">
+                            <div id="remaining-hint" style="font-size:13px; color:var(--text-secondary); margin-top:4px;"></div>
+                        </div>
 
-                    <div class="form-group">
-                        <label for="bottles_shipped">Количество бутылок *</label>
-                        <input type="number" name="bottles_shipped" id="bottles_shipped" required min="1" placeholder="Введите количество">
-                        <div id="remaining-hint" style="font-size:13px; color:var(--text-secondary); margin-top:4px;"></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="waybill_number">Номер ТТН *</label>
-                        <input type="text" name="waybill_number" id="waybill_number" required placeholder="Например: ТТН-2025-0001">
+                        <div class="form-group">
+                            <label for="waybill_number">Номер ТТН *</label>
+                            <input type="text" name="waybill_number" id="waybill_number" required placeholder="Например: ТТН-2025-0001">
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -232,9 +267,26 @@ $recent_shipments = $pdo->query("
                         <select name="shipped_by" id="shipped_by" required>
                             <option value="">Выберите ответственного</option>
                             <?php foreach ($shippers as $s): ?>
-                                <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['full_name']) ?></option>
+                                <option value="<?= $s['id'] ?>" data-position="<?= htmlspecialchars($s['position'] ?? '') ?>"><?= htmlspecialchars($s['full_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
+                    </div>
+
+                    <!-- Дополнительная информация о выбранной партии -->
+                    <div id="batch-info" class="info-box" style="display: none; background: rgba(26, 58, 90, 0.5); padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 3px solid var(--accent);">
+                        <h3 style="margin-top: 0; color: var(--accent);"><i class="fas fa-info-circle"></i> Информация о партии</h3>
+                        <div class="info-row">
+                            <div><strong>Марка воды:</strong> <span id="info-brand"></span></div>
+                            <div><strong>Объем бутылки:</strong> <span id="info-volume"></span> л</div>
+                        </div>
+                        <div class="info-row">
+                            <div><strong>Материал бутылки:</strong> <span id="info-material"></span></div>
+                            <div><strong>Произведено:</strong> <span id="info-production"></span></div>
+                        </div>
+                        <div class="info-row">
+                            <div><strong>Годен до:</strong> <span id="info-expiry"></span></div>
+                            <div><strong>Всего произведено:</strong> <span id="info-total"></span> бут.</div>
+                        </div>
                     </div>
 
                     <input type="hidden" name="batch_number" id="hidden_batch_number">
@@ -245,26 +297,78 @@ $recent_shipments = $pdo->query("
 
         <!-- Последние отгрузки -->
         <div class="section">
-            <h2 class="section-title"><i class="fas fa-history"></i> История отгрузок</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 class="section-title"><i class="fas fa-history"></i> История отгрузок</h2>
+                <div class="stats-box" style="background: rgba(26, 58, 90, 0.5); padding: 10px 15px; border-radius: 8px; border-left: 3px solid var(--accent);">
+                    <strong>Всего отгружено:</strong> 
+                    <span style="color: var(--accent);">
+                        <?= number_format(array_sum(array_column($recent_shipments, 'bottles_shipped')), 0, ' ', ' ') ?> бут.
+                    </span>
+                </div>
+            </div>
+            
             <?php if ($recent_shipments): ?>
-                <table>
+                <!-- Фильтры -->
+                <div class="filters" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <div>
+                        <label for="filter_client" style="display: block; margin-bottom: 5px; font-size: 14px;">Клиент</label>
+                        <select id="filter_client" style="width: 200px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: #142c45; color: var(--text);">
+                            <option value="">Все клиенты</option>
+                            <?php 
+                            $unique_clients = array_unique(array_column($recent_shipments, 'client'));
+                            foreach ($unique_clients as $client): 
+                            ?>
+                                <option value="<?= htmlspecialchars($client) ?>"><?= htmlspecialchars($client) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="filter_date_from" style="display: block; margin-bottom: 5px; font-size: 14px;">Дата от</label>
+                        <input type="date" id="filter_date_from" style="width: 150px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: #142c45; color: var(--text);">
+                    </div>
+                    
+                    <div>
+                        <label for="filter_date_to" style="display: block; margin-bottom: 5px; font-size: 14px;">Дата до</label>
+                        <input type="date" id="filter_date_to" style="width: 150px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: #142c45; color: var(--text);">
+                    </div>
+                    
+                    <div>
+                        <label for="filter_min_bottles" style="display: block; margin-bottom: 5px; font-size: 14px;">Мин. бутылок</label>
+                        <input type="number" id="filter_min_bottles" placeholder="0" min="0" style="width: 120px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: #142c45; color: var(--text);">
+                    </div>
+                </div>
+                
+                <table id="shipments-table">
                     <thead>
                         <tr>
-                            <th>Партия</th>
-                            <th>Клиент</th>
-                            <th>Бутылок</th>
-                            <th>ТТН</th>
-                            <th>Дата</th>
+                            <th onclick="sortTable(0)" style="cursor: pointer;">Партия <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(1)" style="cursor: pointer;">Клиент <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(2)" style="cursor: pointer;">Марка воды <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(3)" style="cursor: pointer;">Объем <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(4)" style="cursor: pointer;">Бутылок <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(5)" style="cursor: pointer;">ТТН <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(6)" style="cursor: pointer;">Дата <i class="fas fa-sort"></i></th>
+                            <th onclick="sortTable(7)" style="cursor: pointer;">Ответственный <i class="fas fa-sort"></i></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($recent_shipments as $s): ?>
-                            <tr>
-                                <td><?= htmlspecialchars($s['batch_number']) ?></td>
+                            <tr data-client="<?= htmlspecialchars($s['client']) ?>" 
+                                data-date="<?= $s['shipment_date'] ?>" 
+                                data-bottles="<?= $s['bottles_shipped'] ?>">
+                                <td>
+                                    <div><strong><?= htmlspecialchars($s['batch_number']) ?></strong></div>
+                                    <small style="color: var(--text-secondary);">Произведено: <?= date('d.m.Y', strtotime($s['production_date'])) ?></small><br>
+                                    <small style="color: var(--text-secondary);">Годен до: <?= date('d.m.Y', strtotime($s['expiry_date'])) ?></small>
+                                </td>
                                 <td><?= htmlspecialchars($s['client']) ?></td>
+                                <td><?= htmlspecialchars($s['brand']) ?></td>
+                                <td><?= $s['volume_l'] ?> л</td>
                                 <td><?= number_format($s['bottles_shipped'], 0, ' ', ' ') ?></td>
                                 <td><?= htmlspecialchars($s['waybill_number']) ?></td>
                                 <td><?= date('d.m.Y', strtotime($s['shipment_date'])) ?></td>
+                                <td><?= htmlspecialchars($s['shipped_by']) ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -284,22 +388,131 @@ $recent_shipments = $pdo->query("
             const option = select.options[select.selectedIndex];
             const batchNumber = option.getAttribute('data-number');
             const remaining = option.getAttribute('data-remaining');
+            const brand = option.getAttribute('data-brand');
+            const volume = option.getAttribute('data-volume');
+            const material = option.getAttribute('data-material');
+            const production = option.getAttribute('data-production');
+            const expiry = option.getAttribute('data-expiry');
+            const total = option.getAttribute('data-total');
+            
             const bottlesInput = document.getElementById('bottles_shipped');
             const hint = document.getElementById('remaining-hint');
             const hiddenBatch = document.getElementById('hidden_batch_number');
-
+            
+            // Обновляем информацию о партии
             if (batchNumber) {
                 bottlesInput.max = remaining;
                 bottlesInput.placeholder = `Максимум: ${remaining}`;
                 hint.textContent = `Максимальное количество для отгрузки: ${remaining} бутылок`;
                 hiddenBatch.value = batchNumber;
+                
+                // Показываем дополнительную информацию о партии
+                document.getElementById('info-brand').textContent = brand;
+                document.getElementById('info-volume').textContent = volume;
+                document.getElementById('info-material').textContent = material;
+                document.getElementById('info-production').textContent = production;
+                document.getElementById('info-expiry').textContent = expiry;
+                document.getElementById('info-total').textContent = total;
+                
+                document.getElementById('batch-info').style.display = 'block';
             } else {
                 hint.textContent = '';
                 bottlesInput.max = '';
                 bottlesInput.placeholder = 'Введите количество';
                 hiddenBatch.value = '';
+                
+                document.getElementById('batch-info').style.display = 'none';
             }
         }
+        
+        // Добавляем валидацию формы
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const bottlesInput = document.getElementById('bottles_shipped');
+            const batchSelect = document.getElementById('batch_id');
+            const remaining = batchSelect.options[batchSelect.selectedIndex].getAttribute('data-remaining');
+            
+            if (parseInt(bottlesInput.value) > parseInt(remaining)) {
+                e.preventDefault();
+                alert('Количество бутылок для отгрузки не может превышать остаток в партии (' + remaining + ' бут.)');
+                return false;
+            }
+        });
+        
+        // Функция сортировки таблицы
+        function sortTable(columnIndex) {
+            const table = document.getElementById('shipments-table');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            // Определяем тип данных для сортировки (0-номер строки, 4-бутылки, 6-дата)
+            const isNumeric = [4].includes(columnIndex); // столбцы с числовыми значениями
+            const isDate = columnIndex === 6; // столбец с датой
+            
+            rows.sort((a, b) => {
+                const aValue = a.cells[columnIndex].textContent.trim();
+                const bValue = b.cells[columnIndex].textContent.trim();
+                
+                if (isNumeric) {
+                    return parseInt(aValue.replace(/\s/g, '')) - parseInt(bValue.replace(/\s/g, ''));
+                } else if (isDate) {
+                    // Преобразуем дату из формата DD.MM.YYYY в YYYY-MM-DD для корректной сортировки
+                    const aDate = aValue.split('.').reverse().join('-');
+                    const bDate = bValue.split('.').reverse().join('-');
+                    return new Date(aDate) - new Date(bDate);
+                } else {
+                    return aValue.localeCompare(bValue, 'ru');
+                }
+            });
+            
+            // Перестраиваем таблицу с отсортированными строками
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        // Функция фильтрации таблицы
+        function filterTable() {
+            const clientFilter = document.getElementById('filter_client').value;
+            const dateFrom = document.getElementById('filter_date_from').value;
+            const dateTo = document.getElementById('filter_date_to').value;
+            const minBottles = document.getElementById('filter_min_bottles').value;
+            
+            const rows = document.querySelectorAll('#shipments-table tbody tr');
+            
+            rows.forEach(row => {
+                const client = row.getAttribute('data-client');
+                const date = row.getAttribute('data-date');
+                const bottles = parseInt(row.getAttribute('data-bottles'));
+                
+                let showRow = true;
+                
+                // Фильтр по клиенту
+                if (clientFilter && client !== clientFilter) {
+                    showRow = false;
+                }
+                
+                // Фильтр по дате "от"
+                if (dateFrom && date < dateFrom) {
+                    showRow = false;
+                }
+                
+                // Фильтр по дате "до"
+                if (dateTo && date > dateTo) {
+                    showRow = false;
+                }
+                
+                // Фильтр по минимальному количеству бутылок
+                if (minBottles && bottles < parseInt(minBottles)) {
+                    showRow = false;
+                }
+                
+                row.style.display = showRow ? '' : 'none';
+            });
+        }
+        
+        // Добавляем обработчики событий для фильтров
+        document.getElementById('filter_client').addEventListener('change', filterTable);
+        document.getElementById('filter_date_from').addEventListener('change', filterTable);
+        document.getElementById('filter_date_to').addEventListener('change', filterTable);
+        document.getElementById('filter_min_bottles').addEventListener('input', filterTable);
     </script>
 </body>
 </html>

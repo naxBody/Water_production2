@@ -257,6 +257,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             //bottled_water_control.sql
             // Validate and sanitize all values before insertion
             // Validate and sanitize all values before insertion
+            $tested_at = date('Y-m-d H:i:s'); // Set current timestamp
+            $notes = $_POST['notes'] ?? ''; // Get notes from form or set to empty string
+            
 $stmt = $pdo->prepare("
     INSERT INTO treated_water_tests (
         treatment_id, tested_at, tested_by,
@@ -774,6 +777,11 @@ echo ("hello world");;
                                 <div class="field-hint">Норма: до 100 КОЕ/мл. Показывает наличие дрожжевых и плесневых грибов, может указывать на биологическое загрязнение.</div>
                             </div>
                         </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Примечания</label>
+                        <textarea name="notes" id="notes" rows="3" placeholder="Дополнительные замечания по качеству воды"><?= htmlspecialchars($last_analysis['notes'] ?? '') ?></textarea>
+                        <div class="field-hint">Укажите любые дополнительные замечания по качеству воды или особенности анализа</div>
                     </div>
                     <button type="submit" class="btn"><i class="fas fa-save"></i> Сохранить анализ</button>
                 </form>

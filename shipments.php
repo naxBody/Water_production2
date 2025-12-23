@@ -89,6 +89,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('Некорректный ответственный за отгрузку.');
         }
 
+        // Проверка уникальности номера ТТН
+        $waybill_check = $pdo->prepare("SELECT id FROM shipments WHERE waybill_number = ?");
+        $waybill_check->execute([$waybill]);
+        if ($waybill_check->fetch()) {
+            throw new Exception('Номер ТТН "' . $waybill . '" уже существует. Пожалуйста, используйте уникальный номер.');
+        }
+
         // Начинаем транзакцию для обеспечения целостности данных
         $pdo->beginTransaction();
 
@@ -531,6 +538,7 @@ $recent_shipments = $pdo->query("
         function validateForm() {
             const bottlesInput = document.getElementById('bottles_shipped');
             const batchSelect = document.getElementById('batch_id');
+            const waybillInput = document.getElementById('waybill_number');
             
             if (batchSelect.value === '') {
                 alert('Пожалуйста, выберите партию');
@@ -547,6 +555,11 @@ $recent_shipments = $pdo->query("
             
             if (bottlesValue > remaining) {
                 alert('Количество бутылок для отгрузки не может превышать остаток в партии (' + remaining + ' бут.)');
+                return false;
+            }
+            
+            if (!waybillInput.value.trim()) {
+                alert('Пожалуйста, введите или сгенерируйте номер ТТН');
                 return false;
             }
             
@@ -662,37 +675,43 @@ $recent_shipments = $pdo->query("
 
         // Функция генерации номера ТТН
         function generateWaybillNumber() {
-            const today = new Date();
-            const year = today.getFullYear();
-
-            // Получаем существующие номера ТТН для определения следующего номера
-            const existingWaybills = [];
-            document.querySelectorAll('#shipments-table tbody tr').forEach(row => {
-                const waybillCell = row.querySelector('td:nth-child(6)');
-                if (waybillCell) {
-                    existingWaybills.push(waybillCell.textContent.trim());
-                }
-            });
-
-            // Находим максимальный номер для текущего года
-            let maxNum = 0;
-            existingWaybills.forEach(waybill => {
-                if (waybill.startsWith(`ТТН-${year}-`)) {
-                    const num = parseInt(waybill.split('-')[2]);
-                    if (isNaN(num) === false && num > maxNum) {
-                        maxNum = num;
+            // Показываем индикатор загрузки
+            const waybillInput = document.getElementById('waybill_number');
+            const originalPlaceholder = waybillInput.placeholder;
+            waybillInput.placeholder = 'Генерация номера...';
+            waybillInput.disabled = true;
+            
+            // Отправляем запрос на сервер для генерации уникального номера ТТН
+            fetch('generate_waybill.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        waybillInput.value = data.waybill_number;
+                        // Показываем сообщение об успешной генерации
+                        const originalBorder = waybillInput.style.borderColor;
+                        waybillInput.style.borderColor = '#4CAF50';
+                        setTimeout(() => {
+                            waybillInput.style.borderColor = originalBorder;
+                        }, 2000);
+                    } else {
+                        alert('Ошибка при генерации номера ТТН: ' + data.error);
+                        // Восстанавливаем исходное значение
+                        waybillInput.placeholder = originalPlaceholder;
+                        waybillInput.disabled = false;
                     }
-                }
-            });
-
-            // Генерируем следующий номер
-            const nextNum = String(maxNum + 1).padStart(4, '0');
-            const newWaybill = `ТТН-${year}-${nextNum}`;
-
-            document.getElementById('waybill_number').value = newWaybill;
+                })
+                .catch(error => {
+                    console.error('Ошибка:', error);
+                    alert('Ошибка при генерации номера ТТН: ' + error.message);
+                    // Восстанавливаем исходное значение
+                    waybillInput.placeholder = originalPlaceholder;
+                    waybillInput.disabled = false;
+                });
         }
 
         // Функция экспорта отгрузок в CSV
+        function exportShipments() {
+            const table = document.getElementById('shipments-table');
             const rows = table.querySelectorAll('tbody tr');
             let csv = 'Партия;Клиент;Марка;Объем;Количество;ТТН;Дата;Ответственный;Примечания\n';
             

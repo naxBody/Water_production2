@@ -1,11 +1,3 @@
 ```
-# Backup files
-*.backup
-
-# Temporary files
-*.tmp
-*.temp
-
-# PHP related
-*.php~
+*.log
 ```

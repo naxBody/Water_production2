@@ -35,7 +35,7 @@ function validateCSRFToken($token) {
 // === ЗАГРУЗКА ДАННЫХ ===
 $ready_batches = $pdo->query("
     SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, 
-           DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
+           DATE_ADD(b.bottling_datetime, INTERVAL b.shelf_life_months MONTH) AS expiry_date,
            wb.name AS brand, bt.volume_l, bt.material, b.total_bottles AS bottles_produced
     FROM batches b
     JOIN water_brands wb ON b.brand_id = wb.id
@@ -106,13 +106,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->commit();
 
-        $message = "✅ Отгрузка оформлена. Партия: " . $batch_number . ", Клиент: " . htmlspecialchars($clients[array_search($client_id, array_column($clients, 'id'))]['name']);
+        // Find client name safely to avoid errors if client is not found
+        $client_key = array_search($client_id, array_column($clients, 'id'));
+        $client_name = 'Клиент';
+        if ($client_key !== false && isset($clients[$client_key]['name'])) {
+            $client_name = $clients[$client_key]['name'];
+        }
+        $message = "✅ Отгрузка оформлена. Партия: " . $batch_number . ", Клиент: " . htmlspecialchars($client_name);
         $message_type = 'success';
 
         // Обновляем список (чтобы убрать полностью отгруженные)
         $ready_batches = $pdo->query("
             SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, 
-                   DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
+                   DATE_ADD(b.bottling_datetime, INTERVAL b.shelf_life_months MONTH) AS expiry_date,
                    wb.name AS brand, bt.volume_l, bt.material, b.total_bottles AS bottles_produced
             FROM batches b
             JOIN water_brands wb ON b.brand_id = wb.id
@@ -133,7 +139,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // === ПОСЛЕДНИЕ ОТГРУЗКИ ===
 $recent_shipments = $pdo->query("
     SELECT s.waybill_number, s.shipment_date, s.bottles_shipped, s.shipped_by, s.notes,
-           c.name AS client, b.batch_number, b.bottling_datetime AS production_date, b.expiry_date, 
+           c.name AS client, b.batch_number, b.bottling_datetime AS production_date, 
+           DATE_ADD(b.bottling_datetime, INTERVAL b.shelf_life_months MONTH) AS expiry_date,
            wb.name AS brand, bt.volume_l
     FROM shipments s
     JOIN batches b ON s.batch_id = b.id

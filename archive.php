@@ -109,20 +109,7 @@ if (isset($_GET['batch_id'])) {
         header { text-align: center; padding: 30px 0 20px; }
         h1 { font-size: 28px; margin-bottom: 8px; color: var(--accent); }
         .subtitle { color: var(--text-secondary); }
-
-        /* Статистика */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin: 24px 0;
-        }
-        .stats-grid:first-of-type {
-            margin-bottom: 12px;
-        }
-        .stat-card {
-            background: var(--card-bg); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border);
-        }
+        
         .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); margin: 8px 0; }
         .stat-label { color: var(--text-secondary); font-size: 14px; }
         .stat-trend { color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; gap: 5px; margin-top: 4px; }
@@ -223,51 +210,71 @@ $top_brand_count = $top_brand ? $top_brand['cnt'] : 0;
 $avg_production_time_formatted = $avg_production_time ? round($avg_production_time, 1).' ч' : 'N/A';
 ?>
 
-        <!-- Улучшенная статистика -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value"><?= number_format($total_produced_bottles, 0, ' ', ' ') ?></div>
-                <div class="stat-label">Всего бутылок произведено</div>
-                <div class="stat-trend"><i class="fas fa-chart-line"></i> Общий объем производства</div>
+        <!-- Крупные карточки статистики -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px;">
+            <div style="background: linear-gradient(135deg, #1a3a5a, #215579); padding: 25px; border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; height: 100%;">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+                    <div style="background: rgba(129,199,132,0.2); padding: 12px; border-radius: 50%; color: var(--success);">
+                        <i class="fas fa-chart-line" style="font-size: 24px;"></i>
+                    </div>
+                    <h3 style="color: var(--accent); font-size: 18px; margin: 0;">Производство</h3>
+                </div>
+                <div style="font-size: 36px; font-weight: 700; color: var(--accent); margin: 10px 0;"><?= number_format($total_produced_bottles, 0, ' ', ' ') ?></div>
+                <div style="color: var(--text-secondary); font-size: 14px; margin-top: auto;">Всего бутылок произведено</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value"><?= $compliance_rate ?>%</div>
-                <div class="stat-label">Соответствие стандартам</div>
-                <div class="stat-trend"><i class="fas fa-shield-alt"></i> Качество продукции</div>
+            
+            <div style="background: linear-gradient(135deg, #1a3a5a, #215579); padding: 25px; border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; height: 100%;">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+                    <div style="background: rgba(79,195,247,0.2); padding: 12px; border-radius: 50%; color: var(--accent);">
+                        <i class="fas fa-shield-alt" style="font-size: 24px;"></i>
+                    </div>
+                    <h3 style="color: var(--accent); font-size: 18px; margin: 0;">Качество</h3>
+                </div>
+                <div style="font-size: 36px; font-weight: 700; color: var(--accent); margin: 10px 0;"><?= $compliance_rate ?>%</div>
+                <div style="color: var(--text-secondary); font-size: 14px; margin-top: auto;">Соответствие стандартам</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value"><?= $top_brand_name ?></div>
-                <div class="stat-label">Лидер по производству</div>
-                <div class="stat-trend"><i class="fas fa-crown"></i> <?= $top_brand_count ?> партий</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value"><?= $avg_production_time_formatted ?></div>
-                <div class="stat-label">Среднее время обработки</div>
-                <div class="stat-trend"><i class="fas fa-clock"></i> Эффективность процесса</div>
+            
+            <div style="background: linear-gradient(135deg, #1a3a5a, #215579); padding: 25px; border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; height: 100%;">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+                    <div style="background: rgba(255,179,0,0.2); padding: 12px; border-radius: 50%; color: var(--warning);">
+                        <i class="fas fa-crown" style="font-size: 24px;"></i>
+                    </div>
+                    <h3 style="color: var(--accent); font-size: 18px; margin: 0;">Лидер</h3>
+                </div>
+                <div style="font-size: 36px; font-weight: 700; color: var(--accent); margin: 10px 0;"><?= $top_brand_name ?></div>
+                <div style="color: var(--text-secondary); font-size: 14px; margin-top: auto;"><?= $top_brand_count ?> партий произведено</div>
             </div>
         </div>
         
         <!-- Дополнительные метрики -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value"><?= number_format($total_shipped_bottles, 0, ' ', ' ') ?></div>
-                <div class="stat-label">Бутылок отгружено</div>
-                <div class="stat-trend"><i class="fas fa-truck"></i> Реализация продукции</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px;">
+            <div style="background: var(--card-bg); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border);">
+                <div style="font-size: 28px; font-weight: 700; color: var(--accent); margin: 8px 0;"><?= number_format($total_shipped_bottles, 0, ' ', ' ') ?></div>
+                <div style="color: var(--text-secondary); font-size: 14px;">Бутылок отгружено</div>
+                <div style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 4px;">
+                    <i class="fas fa-truck"></i> Реализация продукции
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value"><?= number_format($recent_activity, 0, ' ', ' ') ?></div>
-                <div class="stat-label">Партий за 7 дней</div>
-                <div class="stat-trend"><i class="fas fa-fire"></i> Активность производства</div>
+            <div style="background: var(--card-bg); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border);">
+                <div style="font-size: 28px; font-weight: 700; color: var(--accent); margin: 8px 0;"><?= number_format($recent_activity, 0, ' ', ' ') ?></div>
+                <div style="color: var(--text-secondary); font-size: 14px;">Партий за 7 дней</div>
+                <div style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 4px;">
+                    <i class="fas fa-fire"></i> Активность производства
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value"><?= number_format($total_batches - $total_rejected, 0, ' ', ' ') ?></div>
-                <div class="stat-label">Годных партий</div>
-                <div class="stat-trend"><i class="fas fa-check-circle"></i> Качество продукции</div>
+            <div style="background: var(--card-bg); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border);">
+                <div style="font-size: 28px; font-weight: 700; color: var(--success); margin: 8px 0;"><?= number_format($total_batches - $total_rejected, 0, ' ', ' ') ?></div>
+                <div style="color: var(--text-secondary); font-size: 14px;">Годных партий</div>
+                <div style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 4px;">
+                    <i class="fas fa-check-circle"></i> Качество продукции
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value"><?= number_format($total_rejected, 0, ' ', ' ') ?></div>
-                <div class="stat-label">Брак</div>
-                <div class="stat-trend"><i class="fas fa-exclamation-triangle"></i> Необходимо анализировать</div>
+            <div style="background: var(--card-bg); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border);">
+                <div style="font-size: 28px; font-weight: 700; color: var(--danger); margin: 8px 0;"><?= number_format($total_rejected, 0, ' ', ' ') ?></div>
+                <div style="color: var(--text-secondary); font-size: 14px;">Брак</div>
+                <div style="color: var(--text-secondary); font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 4px;">
+                    <i class="fas fa-exclamation-triangle"></i> Требует анализа
+                </div>
             </div>
         </div>
 

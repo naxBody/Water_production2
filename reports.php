@@ -104,13 +104,13 @@ if ($journal_type === 'production') {
             s.shipment_date,
             b.batch_number,
             wb.name AS brand,
-            s.quantity,
+            s.bottles_shipped,
             c.name AS customer,
             s.waybill_number
         FROM shipments s
         JOIN batches b ON s.batch_id = b.id
         JOIN water_brands wb ON b.brand_id = wb.id
-        JOIN customers c ON s.customer_id = c.id
+        JOIN clients c ON s.client_id = c.id
         ORDER BY s.shipment_date DESC
         LIMIT 100
     ")->fetchAll();
@@ -122,7 +122,7 @@ $stats = [
     'good_batches' => $pdo->query("SELECT COUNT(*) FROM batches WHERE status IN ('Годна к реализации', 'Частично отгружена', 'Полностью реализована')")->fetchColumn(),
     'rejected_batches' => $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Брак'")->fetchColumn(),
     'in_stock' => $pdo->query("SELECT SUM(remaining_bottles) FROM batches WHERE remaining_bottles > 0")->fetchColumn() ?: 0,
-    'total_shipped' => $pdo->query("SELECT SUM(quantity) FROM shipments")->fetchColumn() ?: 0
+    'total_shipped' => $pdo->query("SELECT SUM(bottles_shipped) FROM shipments")->fetchColumn() ?: 0
 ];
 
 // === ЭКСПОРТ В CSV ===
@@ -201,7 +201,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 $row['batch_number'],
                 $row['brand'],
                 $row['customer'],
-                $row['quantity'],
+                $row['bottles_shipped'],
                 $row['waybill_number']
             ], ';');
         }
@@ -568,7 +568,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                         <td><?= htmlspecialchars($j['batch_number']) ?></td>
                                         <td><?= htmlspecialchars($j['brand']) ?></td>
                                         <td><?= htmlspecialchars($j['customer']) ?></td>
-                                        <td><?= number_format($j['quantity'], 0, '', ' ') ?></td>
+                                        <td><?= number_format($j['bottles_shipped'], 0, '', ' ') ?></td>
                                         <td><?= htmlspecialchars($j['waybill_number']) ?></td>
                                     </tr>
                                 <?php endforeach; ?>

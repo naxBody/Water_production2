@@ -292,6 +292,7 @@ $recent_shipments = $pdo->query("
                         <div class="form-group">
                             <label for="waybill_number">Номер ТТН *</label>
                             <input type="text" name="waybill_number" id="waybill_number" required placeholder="Например: ТТН-2025-0001">
+                            <button type="button" class="btn" onclick="generateWaybillNumber()" style="margin-top: 8px; background: #4caf50; padding: 8px 16px; font-size: 14px;"><i class="fas fa-magic"></i> Сгенерировать номер</button>
                         </div>
                     </div>
 
@@ -657,10 +658,41 @@ $recent_shipments = $pdo->query("
         document.getElementById('filter_date_from').addEventListener('change', filterTable);
         document.getElementById('filter_date_to').addEventListener('change', filterTable);
         document.getElementById('filter_min_bottles').addEventListener('input', filterTable);
-        
+        document.getElementById('filter_min_bottles').addEventListener('input', filterTable);
+
+        // Функция генерации номера ТТН
+        function generateWaybillNumber() {
+            const today = new Date();
+            const year = today.getFullYear();
+
+            // Получаем существующие номера ТТН для определения следующего номера
+            const existingWaybills = [];
+            document.querySelectorAll('#shipments-table tbody tr').forEach(row => {
+                const waybillCell = row.querySelector('td:nth-child(6)');
+                if (waybillCell) {
+                    existingWaybills.push(waybillCell.textContent.trim());
+                }
+            });
+
+            // Находим максимальный номер для текущего года
+            let maxNum = 0;
+            existingWaybills.forEach(waybill => {
+                if (waybill.startsWith(`ТТН-${year}-`)) {
+                    const num = parseInt(waybill.split('-')[2]);
+                    if (isNaN(num) === false && num > maxNum) {
+                        maxNum = num;
+                    }
+                }
+            });
+
+            // Генерируем следующий номер
+            const nextNum = String(maxNum + 1).padStart(4, '0');
+            const newWaybill = `ТТН-${year}-${nextNum}`;
+
+            document.getElementById('waybill_number').value = newWaybill;
+        }
+
         // Функция экспорта отгрузок в CSV
-        function exportShipments() {
-            const table = document.getElementById('shipments-table');
             const rows = table.querySelectorAll('tbody tr');
             let csv = 'Партия;Клиент;Марка;Объем;Количество;ТТН;Дата;Ответственный;Примечания\n';
             

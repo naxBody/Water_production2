@@ -116,14 +116,7 @@ if ($journal_type === 'production') {
     ")->fetchAll();
 }
 
-// === СТАТИСТИКА ДЛЯ ОБЗОРА ===
-$stats = [
-    'total_batches' => $pdo->query("SELECT COUNT(*) FROM batches")->fetchColumn(),
-    'good_batches' => $pdo->query("SELECT COUNT(*) FROM batches WHERE status IN ('Годна к реализации', 'Частично отгружена', 'Полностью реализована')")->fetchColumn(),
-    'rejected_batches' => $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Брак'")->fetchColumn(),
-    'in_stock' => $pdo->query("SELECT SUM(remaining_bottles) FROM batches WHERE remaining_bottles > 0")->fetchColumn() ?: 0,
-    'total_shipped' => $pdo->query("SELECT SUM(bottles_shipped) FROM shipments")->fetchColumn() ?: 0
-];
+
 
 // === ЭКСПОРТ В CSV ===
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
@@ -148,12 +141,13 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             ], ';');
         }
     } elseif ($journal_type === 'rejection') {
-        fputcsv($output, ['Номер партии', 'Марка', 'Дата розлива', 'Причина'], ';');
+        fputcsv($output, ['Номер партии', 'Марка', 'Дата розлива', 'Дата анализа', 'Причина'], ';');
         foreach ($journal_data as $row) {
             fputcsv($output, [
                 $row['batch_number'],
                 $row['brand'],
-                date('d.m.Y H:i', strtotime($row['bottling_datetime'])),
+                date('d.m.Y', strtotime($row['bottling_datetime'])),
+                date('d.m.Y', strtotime($row['analysis_date'])),
                 $row['reason']
             ], ';');
         }
@@ -164,7 +158,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 $row['batch_number'],
                 $row['brand'],
                 $row['volume_l'] . ' л (' . $row['material'] . ')',
-                date('d.m.Y H:i', strtotime($row['bottling_datetime'])),
+                date('d.m.Y', strtotime($row['bottling_datetime'])),
                 date('d.m.Y', strtotime($row['expiry_date'])),
                 $row['remaining_bottles']
             ], ';');
@@ -255,6 +249,8 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
             th, td { border: 1px solid #000; padding: 8px; text-align: left; }
             th { background: #f0f0f0; }
             .footer { margin-top: 40px; text-align: center; font-style: italic; }
+            .specification-table { width: 100%; table-layout: auto; }
+            .specification-table th, .specification-table td { word-wrap: break-word; }
         </style>
     </head>
     <body>
@@ -274,7 +270,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
         </table>
 
         <div class="title">2. Результаты лабораторного контроля</div>
-        <table>
+        <table class="specification-table">
             <tr><th>Показатель</th><th>Норма по СТБ 1575-2013</th><th>Фактическое значение</th></tr>
             <tr><td>pH</td><td>6,5–9,0</td><td><?= $data['ph'] ?></td></tr>
             <tr><td>Жёсткость, ммоль/л</td><td>≤ 7,0</td><td><?= $data['hardness_mmol'] ?></td></tr>
@@ -364,9 +360,13 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
         .btn-csv { background: #2e7d32; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+        th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); }
         th { color: var(--text-secondary); font-weight: 600; }
         tr:last-child td { border-bottom: none; }
+        .quality-status { padding: 4px 8px; border-radius: 4px; font-weight: bold; }
+        .quality-status.good { background: rgba(129, 199, 132, 0.2); color: #81c784; }
+        .quality-status.bad { background: rgba(244, 67, 54, 0.2); color: #f44336; }
+        .scrollable-table { overflow-x: auto; }
         select, input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: #142c45; color: var(--text); margin-top: 8px; }
 
         .tabs { display: flex; gap: 12px; margin: 24px 0; }
@@ -396,29 +396,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
             <div class="subtitle">Комплексная аналитика производства, качества, отгрузок и остатков в соответствии с СТБ 1575-2013</div>
         </header>
 
-        <!-- Статистика -->
-        <div class="stats-grid">
-            <div class="stat-card production">
-                <i class="fas fa-industry fa-2x"></i>
-                <div class="stat-value"><?= $stats['total_batches'] ?></div>
-                <div class="stat-label">Всего партий</div>
-            </div>
-            <div class="stat-card quality">
-                <i class="fas fa-check-circle fa-2x"></i>
-                <div class="stat-value"><?= $stats['good_batches'] ?></div>
-                <div class="stat-label">Годных к реализации</div>
-            </div>
-            <div class="stat-card rejected">
-                <i class="fas fa-times-circle fa-2x"></i>
-                <div class="stat-value"><?= $stats['rejected_batches'] ?></div>
-                <div class="stat-label">Брак</div>
-            </div>
-            <div class="stat-card stock">
-                <i class="fas fa-boxes fa-2x"></i>
-                <div class="stat-value"><?= number_format($stats['in_stock'], 0, '', ' ') ?></div>
-                <div class="stat-label">В наличии (бут.)</div>
-            </div>
-        </div>
+        
 
         <!-- Паспорт качества -->
         <div class="report-sections">
@@ -455,6 +433,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                     <i class="fas fa-file-csv"></i> Экспорт в CSV
                 </a>
                 <?php if (!empty($journal_data)): ?>
+                    <div class="scrollable-table">
                     <table style="margin-top: 16px;">
                         <?php if ($journal_type === 'production'): ?>
                             <thead>
@@ -464,6 +443,8 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                     <th>Тара</th>
                                     <th>Дата</th>
                                     <th>Статус</th>
+                                    <th>Всего бут.</th>
+                                    <th>Остаток</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -471,9 +452,11 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                     <tr>
                                         <td><?= htmlspecialchars($j['batch_number']) ?></td>
                                         <td><?= htmlspecialchars($j['brand']) ?></td>
-                                        <td><?= $j['volume_l'] ?> л</td>
+                                        <td><?= $j['volume_l'] ?> л (<?= htmlspecialchars($j['material']) ?>)</td>
                                         <td><?= date('d.m.Y', strtotime($j['bottling_datetime'])) ?></td>
                                         <td><?= htmlspecialchars($j['status']) ?></td>
+                                        <td><?= number_format($j['total_bottles'], 0, '', ' ') ?></td>
+                                        <td><?= number_format($j['remaining_bottles'], 0, '', ' ') ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -483,6 +466,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                     <th>Партия</th>
                                     <th>Марка</th>
                                     <th>Дата розлива</th>
+                                    <th>Дата анализа</th>
                                     <th>Причина</th>
                                 </tr>
                             </thead>
@@ -492,6 +476,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                         <td><?= htmlspecialchars($j['batch_number']) ?></td>
                                         <td><?= htmlspecialchars($j['brand']) ?></td>
                                         <td><?= date('d.m.Y', strtotime($j['bottling_datetime'])) ?></td>
+                                        <td><?= date('d.m.Y', strtotime($j['analysis_date'])) ?></td>
                                         <td><?= htmlspecialchars($j['reason']) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -501,6 +486,8 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                 <tr>
                                     <th>Партия</th>
                                     <th>Марка</th>
+                                    <th>Тара</th>
+                                    <th>Дата розлива</th>
                                     <th>Срок годности</th>
                                     <th>Остаток</th>
                                 </tr>
@@ -510,8 +497,10 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                     <tr>
                                         <td><?= htmlspecialchars($j['batch_number']) ?></td>
                                         <td><?= htmlspecialchars($j['brand']) ?></td>
+                                        <td><?= $j['volume_l'] ?> л (<?= htmlspecialchars($j['material']) ?>)</td>
+                                        <td><?= date('d.m.Y', strtotime($j['bottling_datetime'])) ?></td>
                                         <td><?= date('d.m.Y', strtotime($j['expiry_date'])) ?></td>
-                                        <td><?= number_format($j['remaining_bottles'], 0, ' ', ' ') ?></td>
+                                        <td><?= number_format($j['remaining_bottles'], 0, '', ' ') ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -524,6 +513,14 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                     <th>pH</th>
                                     <th>Жёсткость</th>
                                     <th>Сухой остаток</th>
+                                    <th>Железо</th>
+                                    <th>Нитраты</th>
+                                    <th>Фториды</th>
+                                    <th>ОМЧ</th>
+                                    <th>Дрожжи и плесени</th>
+                                    <th>Колиформные бактерии</th>
+                                    <th>Термотолерантные колиформы</th>
+                                    <th>Pseudomonas</th>
                                     <th>Качество</th>
                                 </tr>
                             </thead>
@@ -536,6 +533,14 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                         <td><?= $j['ph'] ?></td>
                                         <td><?= $j['hardness_mmol'] ?> ммоль/л</td>
                                         <td><?= $j['dry_residue_mg_l'] ?> мг/л</td>
+                                        <td><?= $j['iron_mg_l'] ?> мг/л</td>
+                                        <td><?= $j['nitrates_mg_l'] ?> мг/л</td>
+                                        <td><?= $j['fluorides_mg_l'] ?> мг/л</td>
+                                        <td><?= $j['omch_cfu_ml'] ?> КОЕ/мл</td>
+                                        <td><?= $j['yeast_mold_cfu_ml'] ?> КОЕ/мл</td>
+                                        <td><?= $j['coliforms_detected'] ? 'Обнаружены' : 'Не обнаружены' ?></td>
+                                        <td><?= $j['thermotolerant_coliforms_detected'] ? 'Обнаружены' : 'Не обнаружены' ?></td>
+                                        <td><?= $j['pseudomonas_detected'] ? 'Обнаружена' : 'Не обнаружена' ?></td>
                                         <td>
                                             <?php 
                                             $is_good = !($j['coliforms_detected'] || $j['thermotolerant_coliforms_detected'] || $j['pseudomonas_detected'] || 
@@ -575,6 +580,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                             </tbody>
                         <?php endif; ?>
                     </table>
+                    </div>
                 <?php else: ?>
                     <p class="empty">Нет данных для отображения.</p>
                 <?php endif; ?>

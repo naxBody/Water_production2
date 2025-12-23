@@ -36,7 +36,7 @@ function validateCSRFToken($token) {
 $ready_batches = $pdo->query("
     SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, 
            DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
-           wb.name AS brand, bt.volume_l, bt.material, b.total_bottles AS bottles_produced, b.quality_status
+           wb.name AS brand, bt.volume_l, bt.material, b.total_bottles AS bottles_produced
     FROM batches b
     JOIN water_brands wb ON b.brand_id = wb.id
     JOIN bottle_types bt ON b.bottle_type_id = bt.id
@@ -113,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ready_batches = $pdo->query("
             SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, 
                    DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
-                   wb.name AS brand, bt.volume_l, bt.material, b.total_bottles AS bottles_produced, b.quality_status
+                   wb.name AS brand, bt.volume_l, bt.material, b.total_bottles AS bottles_produced
             FROM batches b
             JOIN water_brands wb ON b.brand_id = wb.id
             JOIN bottle_types bt ON b.bottle_type_id = bt.id
@@ -257,7 +257,7 @@ $recent_shipments = $pdo->query("
 
                         <div class="form-group">
                             <label for="client_id">Контрагент *</label>
-                            <select name="client_id" id="client_id" required>
+                            <select name="client_id" id="client_id" required onchange="updateClientInfo(this)">
                                 <option value="">Выберите клиента</option>
                                 <?php foreach ($clients as $c): ?>
                                     <option value="<?= $c['id'] ?>" 
@@ -267,14 +267,19 @@ $recent_shipments = $pdo->query("
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                            <div id="client-info" style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); display: none;">
+                                <div><strong>Контактное лицо:</strong> <span id="client-contact"></span></div>
+                                <div><strong>Телефон:</strong> <span id="client-phone"></span></div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label for="bottles_shipped">Количество бутылок *</label>
-                            <input type="number" name="bottles_shipped" id="bottles_shipped" required min="1" placeholder="Введите количество">
+                            <input type="number" name="bottles_shipped" id="bottles_shipped" required min="1" placeholder="Введите количество" oninput="calculateVolume(this)">
                             <div id="remaining-hint" style="font-size:13px; color:var(--text-secondary); margin-top:4px;"></div>
+                            <div id="volume-calculation" style="font-size:13px; color:var(--accent); margin-top:4px; display:none;"></div>
                         </div>
 
                         <div class="form-group">
@@ -318,6 +323,7 @@ $recent_shipments = $pdo->query("
                     <input type="hidden" name="batch_number" id="hidden_batch_number">
                     <input type="hidden" name="csrf_token" value="<?= generateCSRFToken() ?>">
                     <button type="submit" class="btn"><i class="fas fa-truck"></i> Оформить отгрузку</button>
+                    <button type="button" class="btn" onclick="clearForm()" style="background: #f44336; margin-left: 10px;"><i class="fas fa-eraser"></i> Очистить форму</button>
                 </form>
             <?php endif; ?>
         </div>
@@ -326,11 +332,14 @@ $recent_shipments = $pdo->query("
         <div class="section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 class="section-title"><i class="fas fa-history"></i> История отгрузок</h2>
-                <div class="stats-box" style="background: rgba(26, 58, 90, 0.5); padding: 10px 15px; border-radius: 8px; border-left: 3px solid var(--accent);">
-                    <strong>Всего отгружено:</strong> 
-                    <span style="color: var(--accent);">
-                        <?= number_format(array_sum(array_column($recent_shipments, 'bottles_shipped')), 0, ' ', ' ') ?> бут.
-                    </span>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <div class="stats-box" style="background: rgba(26, 58, 90, 0.5); padding: 10px 15px; border-radius: 8px; border-left: 3px solid var(--accent);">
+                        <strong>Всего отгружено:</strong> 
+                        <span style="color: var(--accent);">
+                            <?= number_format(array_sum(array_column($recent_shipments, 'bottles_shipped')), 0, ' ', ' ') ?> бут.
+                        </span>
+                    </div>
+                    <button class="btn" onclick="exportShipments()" style="background: #4caf50;"><i class="fas fa-file-export"></i> Экспорт в CSV</button>
                 </div>
             </div>
             
@@ -454,16 +463,110 @@ $recent_shipments = $pdo->query("
             }
         }
         
+        // Функция обновления информации о клиенте
+        function updateClientInfo(select) {
+            const option = select.options[select.selectedIndex];
+            const contact = option.getAttribute('data-contact');
+            const phone = option.getAttribute('data-phone');
+            
+            const clientInfo = document.getElementById('client-info');
+            const contactSpan = document.getElementById('client-contact');
+            const phoneSpan = document.getElementById('client-phone');
+            
+            if (contact || phone) {
+                contactSpan.textContent = contact || 'Не указано';
+                phoneSpan.textContent = phone || 'Не указано';
+                clientInfo.style.display = 'block';
+            } else {
+                clientInfo.style.display = 'none';
+            }
+        }
+        
+        // Функция расчета объема по количеству бутылок
+        function calculateVolume(input) {
+            const bottles = parseInt(input.value) || 0;
+            const batchSelect = document.getElementById('batch_id');
+            const volumeCalcDiv = document.getElementById('volume-calculation');
+            
+            if (batchSelect.value === '' || bottles <= 0) {
+                volumeCalcDiv.style.display = 'none';
+                return;
+            }
+            
+            const volume = batchSelect.options[batchSelect.selectedIndex].getAttribute('data-volume');
+            const totalVolume = (bottles * parseFloat(volume)).toFixed(2);
+            
+            volumeCalcDiv.innerHTML = `Объем: ${totalVolume} л`;
+            volumeCalcDiv.style.display = 'block';
+        }
+        
+        // Функция очистки формы
+        function clearForm() {
+            if (confirm('Вы уверены, что хотите очистить форму?')) {
+                document.querySelector('form').reset();
+                document.getElementById('batch-info').style.display = 'none';
+                document.getElementById('client-info').style.display = 'none';
+                document.getElementById('volume-calculation').style.display = 'none';
+                document.getElementById('remaining-hint').textContent = '';
+                document.getElementById('bottles_shipped').placeholder = 'Введите количество';
+                document.getElementById('bottles_shipped').style.borderColor = '';
+                document.getElementById('bottles_shipped').title = '';
+            }
+        }
+        
         // Добавляем валидацию формы
-        document.querySelector('form').addEventListener('submit', function(e) {
+        function validateForm() {
             const bottlesInput = document.getElementById('bottles_shipped');
             const batchSelect = document.getElementById('batch_id');
-            const remaining = batchSelect.options[batchSelect.selectedIndex].getAttribute('data-remaining');
             
-            if (parseInt(bottlesInput.value) > parseInt(remaining)) {
-                e.preventDefault();
+            if (batchSelect.value === '') {
+                alert('Пожалуйста, выберите партию');
+                return false;
+            }
+            
+            const remaining = parseInt(batchSelect.options[batchSelect.selectedIndex].getAttribute('data-remaining'));
+            const bottlesValue = parseInt(bottlesInput.value) || 0;
+            
+            if (bottlesValue <= 0) {
+                alert('Количество бутылок должно быть больше 0');
+                return false;
+            }
+            
+            if (bottlesValue > remaining) {
                 alert('Количество бутылок для отгрузки не может превышать остаток в партии (' + remaining + ' бут.)');
                 return false;
+            }
+            
+            return true;
+        }
+        
+        // Валидация при отправке формы
+        document.querySelector('form').addEventListener('submit', function(e) {
+            if (!validateForm()) {
+                e.preventDefault();
+                return false;
+            }
+        });
+        
+        // Валидация в реальном времени при изменении количества бутылок
+        document.getElementById('bottles_shipped').addEventListener('input', function() {
+            const bottlesInput = this;
+            const batchSelect = document.getElementById('batch_id');
+            
+            if (batchSelect.value === '') return;
+            
+            const remaining = parseInt(batchSelect.options[batchSelect.selectedIndex].getAttribute('data-remaining'));
+            const bottlesValue = parseInt(bottlesInput.value) || 0;
+            
+            if (bottlesValue > remaining) {
+                bottlesInput.style.borderColor = '#f44336';
+                bottlesInput.title = 'Превышено количество доступных бутылок (' + remaining + ')';
+            } else if (bottlesValue > 0) {
+                bottlesInput.style.borderColor = '#81c784';
+                bottlesInput.title = '';
+            } else {
+                bottlesInput.style.borderColor = '';
+                bottlesInput.title = '';
             }
         });
         
@@ -542,6 +645,43 @@ $recent_shipments = $pdo->query("
         document.getElementById('filter_date_from').addEventListener('change', filterTable);
         document.getElementById('filter_date_to').addEventListener('change', filterTable);
         document.getElementById('filter_min_bottles').addEventListener('input', filterTable);
+        
+        // Функция экспорта отгрузок в CSV
+        function exportShipments() {
+            const table = document.getElementById('shipments-table');
+            const rows = table.querySelectorAll('tbody tr');
+            let csv = 'Партия;Клиент;Марка;Объем;Количество;ТТН;Дата;Ответственный;Примечания\n';
+            
+            rows.forEach(row => {
+                if (row.style.display !== 'none') { // Только видимые строки (после фильтрации)
+                    const cells = row.querySelectorAll('td');
+                    let rowData = [];
+                    cells.forEach(cell => {
+                        // Извлекаем текст из ячеек, убирая HTML-теги и лишние пробелы
+                        let cellText = cell.textContent.trim();
+                        // Убираем форматирование чисел (пробелы как разделители тысяч)
+                        cellText = cellText.replace(/\s/g, '');
+                        // Экранируем кавычки и добавляем кавычки к значению, если оно содержит точку с запятой
+                        if (cellText.includes(';') || cellText.includes('"') || cellText.includes('\n')) {
+                            cellText = '"' + cellText.replace(/"/g, '""') + '"';
+                        }
+                        rowData.push(cellText);
+                    });
+                    csv += rowData.join(';') + '\n';
+                }
+            });
+            
+            // Создаем и скачиваем CSV файл
+            const blob = new Blob(['\\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'отгрузки_' + new Date().toISOString().slice(0, 10) + '.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
     </script>
 </body>
 </html>

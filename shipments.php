@@ -21,8 +21,9 @@ try {
 
 // === ЗАГРУЗКА ДАННЫХ ===
 $ready_batches = $pdo->query("
-    SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, b.production_date, b.expiry_date,
-           wb.name AS brand, bt.volume_l, bt.material, b.bottles_produced, b.quality_status
+    SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, 
+           DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
+           wb.name AS brand, bt.volume_l, bt.material, b.total_bottles AS bottles_produced, b.quality_status
     FROM batches b
     JOIN water_brands wb ON b.brand_id = wb.id
     JOIN bottle_types bt ON b.bottle_type_id = bt.id
@@ -91,8 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Обновляем список (чтобы убрать полностью отгруженные)
         $ready_batches = $pdo->query("
-            SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, b.production_date, b.expiry_date,
-                   wb.name AS brand, bt.volume_l, bt.material, b.bottles_produced, b.quality_status
+            SELECT b.id, b.batch_number, b.remaining_bottles, b.bottling_datetime, 
+                   DATE_ADD(b.bottling_datetime, INTERVAL 12 MONTH) AS expiry_date,
+                   wb.name AS brand, bt.volume_l, bt.material, b.total_bottles AS bottles_produced, b.quality_status
             FROM batches b
             JOIN water_brands wb ON b.brand_id = wb.id
             JOIN bottle_types bt ON b.bottle_type_id = bt.id
@@ -112,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // === ПОСЛЕДНИЕ ОТГРУЗКИ ===
 $recent_shipments = $pdo->query("
     SELECT s.waybill_number, s.shipment_date, s.bottles_shipped, s.shipped_by,
-           c.name AS client, b.batch_number, b.production_date, b.expiry_date, 
+           c.name AS client, b.batch_number, b.bottling_datetime AS production_date, b.expiry_date, 
            wb.name AS brand, bt.volume_l
     FROM shipments s
     JOIN batches b ON s.batch_id = b.id
@@ -225,7 +227,7 @@ $recent_shipments = $pdo->query("
                                         data-brand="<?= htmlspecialchars($b['brand']) ?>"
                                         data-volume="<?= $b['volume_l'] ?>"
                                         data-material="<?= htmlspecialchars($b['material']) ?>"
-                                        data-production="<?= date('d.m.Y', strtotime($b['production_date'])) ?>"
+                                        data-production="<?= date('d.m.Y', strtotime($b['bottling_datetime'])) ?>"
                                         data-expiry="<?= date('d.m.Y', strtotime($b['expiry_date'])) ?>"
                                         data-total="<?= $b['bottles_produced'] ?>">
                                         <?= htmlspecialchars($b['batch_number']) ?> — <?= htmlspecialchars($b['brand']) ?>, <?= $b['volume_l'] ?> л (остаток: <?= number_format($b['remaining_bottles'], 0, ' ', ' ') ?> бут.)
@@ -359,7 +361,7 @@ $recent_shipments = $pdo->query("
                                 data-bottles="<?= $s['bottles_shipped'] ?>">
                                 <td>
                                     <div><strong><?= htmlspecialchars($s['batch_number']) ?></strong></div>
-                                    <small style="color: var(--text-secondary);">Произведено: <?= date('d.m.Y', strtotime($s['production_date'])) ?></small><br>
+                                    <small style="color: var(--text-secondary);">Произведено: <?= date('d.m.Y', strtotime($s['bottling_datetime'])) ?></small><br>
                                     <small style="color: var(--text-secondary);">Годен до: <?= date('d.m.Y', strtotime($s['expiry_date'])) ?></small>
                                 </td>
                                 <td><?= htmlspecialchars($s['client']) ?></td>

@@ -77,7 +77,53 @@ if ($journal_type === 'production') {
         WHERE b.remaining_bottles > 0
         ORDER BY b.bottling_datetime DESC
     ")->fetchAll();
+} elseif ($journal_type === 'quality') {
+    // Данные для отчета по качеству воды
+    $journal_data = $pdo->query("
+        SELECT 
+            tw.tested_at,
+            ws.name AS source_name,
+            tw.ph, tw.hardness_mmol, tw.dry_residue_mg_l, 
+            tw.iron_mg_l, tw.nitrates_mg_l, tw.fluorides_mg_l,
+            tw.omch_cfu_ml, tw.yeast_mold_cfu_ml,
+            tw.coliforms_detected, tw.thermotolerant_coliforms_detected, tw.pseudomonas_detected,
+            wb.name AS brand_name
+        FROM treated_water_tests tw
+        JOIN water_treatments wt ON tw.treatment_id = wt.id
+        JOIN raw_water_tests rwt ON wt.raw_test_id = rwt.id
+        JOIN water_sources ws ON rwt.source_id = ws.id
+        LEFT JOIN batches b ON tw.id = b.treated_test_id
+        LEFT JOIN water_brands wb ON b.brand_id = wb.id
+        ORDER BY tw.tested_at DESC
+        LIMIT 100
+    ")->fetchAll();
+} elseif ($journal_type === 'shipment') {
+    // Данные для отчета по отгрузкам
+    $journal_data = $pdo->query("
+        SELECT 
+            s.shipment_date,
+            b.batch_number,
+            wb.name AS brand,
+            s.quantity,
+            c.name AS customer,
+            s.waybill_number
+        FROM shipments s
+        JOIN batches b ON s.batch_id = b.id
+        JOIN water_brands wb ON b.brand_id = wb.id
+        JOIN customers c ON s.customer_id = c.id
+        ORDER BY s.shipment_date DESC
+        LIMIT 100
+    ")->fetchAll();
 }
+
+// === СТАТИСТИКА ДЛЯ ОБЗОРА ===
+$stats = [
+    'total_batches' => $pdo->query("SELECT COUNT(*) FROM batches")->fetchColumn(),
+    'good_batches' => $pdo->query("SELECT COUNT(*) FROM batches WHERE status IN ('Годна к реализации', 'Частично отгружена', 'Полностью реализована')")->fetchColumn(),
+    'rejected_batches' => $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Брак'")->fetchColumn(),
+    'in_stock' => $pdo->query("SELECT SUM(remaining_bottles) FROM batches WHERE remaining_bottles > 0")->fetchColumn() ?: 0,
+    'total_shipped' => $pdo->query("SELECT SUM(quantity) FROM shipments")->fetchColumn() ?: 0
+];
 
 // === ЭКСПОРТ В CSV ===
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
@@ -121,6 +167,42 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 date('d.m.Y H:i', strtotime($row['bottling_datetime'])),
                 date('d.m.Y', strtotime($row['expiry_date'])),
                 $row['remaining_bottles']
+            ], ';');
+        }
+    } elseif ($journal_type === 'quality') {
+        fputcsv($output, ['Дата анализа', 'Источник', 'Марка', 'pH', 'Жёсткость', 'Сухой остаток', 'Железо', 'Нитраты', 'Фториды', 'ОМЧ', 'Дрожжи и плесени', 'Колиформные бактерии', 'Термотолерантные колиформы', 'Pseudomonas', 'Качество'], ';');
+        foreach ($journal_data as $row) {
+            fputcsv($output, [
+                date('d.m.Y H:i', strtotime($row['tested_at'])),
+                $row['source_name'],
+                $row['brand_name'] ?? 'Н/Д',
+                $row['ph'],
+                $row['hardness_mmol'],
+                $row['dry_residue_mg_l'],
+                $row['iron_mg_l'],
+                $row['nitrates_mg_l'],
+                $row['fluorides_mg_l'],
+                $row['omch_cfu_ml'],
+                $row['yeast_mold_cfu_ml'],
+                $row['coliforms_detected'] ? 'Обнаружены' : 'Не обнаружены',
+                $row['thermotolerant_coliforms_detected'] ? 'Обнаружены' : 'Не обнаружены',
+                $row['pseudomonas_detected'] ? 'Обнаружена' : 'Не обнаружена',
+                (!($row['coliforms_detected'] || $row['thermotolerant_coliforms_detected'] || $row['pseudomonas_detected'] || 
+                   $row['ph'] < 6.5 || $row['ph'] > 9.0 || $row['hardness_mmol'] > 7.0 || 
+                   $row['dry_residue_mg_l'] > 1000 || $row['nitrates_mg_l'] > 45 || 
+                   $row['omch_cfu_ml'] > 100 || $row['yeast_mold_cfu_ml'] > 100)) ? 'Годно' : 'Брак'
+            ], ';');
+        }
+    } elseif ($journal_type === 'shipment') {
+        fputcsv($output, ['Дата отгрузки', 'Партия', 'Марка', 'Клиент', 'Количество', 'Номер накладной'], ';');
+        foreach ($journal_data as $row) {
+            fputcsv($output, [
+                date('d.m.Y', strtotime($row['shipment_date'])),
+                $row['batch_number'],
+                $row['brand'],
+                $row['customer'],
+                $row['quantity'],
+                $row['waybill_number']
             ], ';');
         }
     }
@@ -311,8 +393,32 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
     <div class="container">
         <header>
             <h1>Отчёты и документация</h1>
-            <div class="subtitle">Генерация паспортов качества и журналов в соответствии с СТБ 1575-2013</div>
+            <div class="subtitle">Комплексная аналитика производства, качества, отгрузок и остатков в соответствии с СТБ 1575-2013</div>
         </header>
+
+        <!-- Статистика -->
+        <div class="stats-grid">
+            <div class="stat-card production">
+                <i class="fas fa-industry fa-2x"></i>
+                <div class="stat-value"><?= $stats['total_batches'] ?></div>
+                <div class="stat-label">Всего партий</div>
+            </div>
+            <div class="stat-card quality">
+                <i class="fas fa-check-circle fa-2x"></i>
+                <div class="stat-value"><?= $stats['good_batches'] ?></div>
+                <div class="stat-label">Годных к реализации</div>
+            </div>
+            <div class="stat-card rejected">
+                <i class="fas fa-times-circle fa-2x"></i>
+                <div class="stat-value"><?= $stats['rejected_batches'] ?></div>
+                <div class="stat-label">Брак</div>
+            </div>
+            <div class="stat-card stock">
+                <i class="fas fa-boxes fa-2x"></i>
+                <div class="stat-value"><?= number_format($stats['in_stock'], 0, '', ' ') ?></div>
+                <div class="stat-label">В наличии (бут.)</div>
+            </div>
+        </div>
 
         <!-- Паспорт качества -->
         <div class="report-sections">
@@ -342,6 +448,8 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                     <div class="tab <?= $journal_type === 'production' ? 'active' : '' ?>" data-tab="production">Производство</div>
                     <div class="tab <?= $journal_type === 'rejection' ? 'active' : '' ?>" data-tab="rejection">Брак</div>
                     <div class="tab <?= $journal_type === 'stock' ? 'active' : '' ?>" data-tab="stock">Остатки</div>
+                    <div class="tab <?= $journal_type === 'quality' ? 'active' : '' ?>" data-tab="quality">Качество</div>
+                    <div class="tab <?= $journal_type === 'shipment' ? 'active' : '' ?>" data-tab="shipment">Отгрузки</div>
                 </div>
                 <a href="reports.php?journal=<?= $journal_type ?>&export=csv" class="btn btn-csv" style="margin-top: 12px;">
                     <i class="fas fa-file-csv"></i> Экспорт в CSV
@@ -407,6 +515,64 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
+                        <?php elseif ($journal_type === 'quality'): ?>
+                            <thead>
+                                <tr>
+                                    <th>Дата анализа</th>
+                                    <th>Источник</th>
+                                    <th>Марка</th>
+                                    <th>pH</th>
+                                    <th>Жёсткость</th>
+                                    <th>Сухой остаток</th>
+                                    <th>Качество</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($journal_data as $j): ?>
+                                    <tr>
+                                        <td><?= date('d.m.Y H:i', strtotime($j['tested_at'])) ?></td>
+                                        <td><?= htmlspecialchars($j['source_name']) ?></td>
+                                        <td><?= htmlspecialchars($j['brand_name'] ?? 'Н/Д') ?></td>
+                                        <td><?= $j['ph'] ?></td>
+                                        <td><?= $j['hardness_mmol'] ?> ммоль/л</td>
+                                        <td><?= $j['dry_residue_mg_l'] ?> мг/л</td>
+                                        <td>
+                                            <?php 
+                                            $is_good = !($j['coliforms_detected'] || $j['thermotolerant_coliforms_detected'] || $j['pseudomonas_detected'] || 
+                                                        $j['ph'] < 6.5 || $j['ph'] > 9.0 || $j['hardness_mmol'] > 7.0 || 
+                                                        $j['dry_residue_mg_l'] > 1000 || $j['nitrates_mg_l'] > 45 || 
+                                                        $j['omch_cfu_ml'] > 100 || $j['yeast_mold_cfu_ml'] > 100);
+                                            ?>
+                                            <span class="quality-status <?= $is_good ? 'good' : 'bad' ?>">
+                                                <?= $is_good ? 'Годно' : 'Брак' ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        <?php elseif ($journal_type === 'shipment'): ?>
+                            <thead>
+                                <tr>
+                                    <th>Дата отгрузки</th>
+                                    <th>Партия</th>
+                                    <th>Марка</th>
+                                    <th>Клиент</th>
+                                    <th>Кол-во</th>
+                                    <th>Накладная</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($journal_data as $j): ?>
+                                    <tr>
+                                        <td><?= date('d.m.Y', strtotime($j['shipment_date'])) ?></td>
+                                        <td><?= htmlspecialchars($j['batch_number']) ?></td>
+                                        <td><?= htmlspecialchars($j['brand']) ?></td>
+                                        <td><?= htmlspecialchars($j['customer']) ?></td>
+                                        <td><?= number_format($j['quantity'], 0, '', ' ') ?></td>
+                                        <td><?= htmlspecialchars($j['waybill_number']) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
                         <?php endif; ?>
                     </table>
                 <?php else: ?>
@@ -416,7 +582,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
         </div>
 
         <footer>
-            Все документы соответствуют требованиям СТБ 1575-2013 и ТР ТС 021/2011.
+            Все документы соответствуют требованиям СТБ 1575-2013 и ТР ТС 021/2011. Доступны отчёты по производству, качеству, отгрузкам, остаткам и браку.
         </footer>
     </div>
 
@@ -440,6 +606,14 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
             tab.addEventListener('click', () => {
                 const type = tab.getAttribute('data-tab');
                 window.location.href = `reports.php?journal=${type}`;
+            });
+        });
+        
+        // Добавим визуальную обратную связь для активных табов
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
             });
         });
     </script>

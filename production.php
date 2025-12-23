@@ -444,7 +444,6 @@ echo ("hello world");;
             <li><a href="shipments.php"><i class="fas fa-truck"></i> Отгрузки</a></li>
             <li><a href="archive.php"><i class="fas fa-archive"></i> Архив</a></li>
             <li><a href="reports.php"><i class="fas fa-file-pdf"></i> Отчёты</a></li>
-            <li><a href="sources.php"><i class="fas fa-map-marker-alt"></i> Источники</a></li>
         </ul>
     </nav>
 

@@ -196,6 +196,11 @@ $main_alert = $alerts[0];
         .info-block { background: var(--card-bg); border-radius: 12px; padding: 16px; margin-bottom: 16px; border-left: 4px solid var(--accent); }
         .info-title { font-weight: 600; margin-bottom: 8px; color: var(--accent); }
         .info-content { color: var(--text); font-size: 15px; line-height: 1.5; }
+        
+        /* Новые стили для карточек информации */
+        .info-card { background: var(--card-bg); border-radius: 12px; padding: 16px; border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .info-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 15px; }
 
         footer { text-align: center; color: var(--text-secondary); font-size: 15px; padding: 30px 0 20px; border-top: 1px solid var(--border); margin-top: 20px; }
     </style>
@@ -209,7 +214,6 @@ $main_alert = $alerts[0];
             <li><a href="shipments.php">Отгрузки</a></li>
             <li><a href="archive.php">Архив</a></li>
             <li><a href="reports.php">Отчёты</a></li>
-            <li><a href="sources.php">Источники</a></li>
         </ul>
     </nav>
 
@@ -243,9 +247,12 @@ $main_alert = $alerts[0];
         <div class="section">
             <div class="section-title"><i class="fas fa-star"></i> Требования качества и нормативы</div>
             
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 15px;">
-                <div class="info-block" style="border-left-color: var(--success);">
-                    <div class="info-title"><i class="fas fa-vial"></i> Показатели качества по СТБ 1575-2013 и ТР ТС 021/2011</div>
+            <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 15px;">
+                <div class="info-card" style="background: var(--card-bg); border-radius: 12px; padding: 16px; border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                    <div class="info-header" style="display: flex; align-items: center; gap: 8px; color: var(--success); margin-bottom: 12px;">
+                        <i class="fas fa-vial"></i>
+                        <h3 style="font-size: 16px; margin: 0;">Показатели качества по СТБ 1575-2013 и ТР ТС 021/2011</h3>
+                    </div>
                     <div class="info-content">
                         <strong>Микробиология (СТБ 1575-2013):</strong><br>
                         • Колиформы: не допускаются (ГОСТ 32598)<br>
@@ -266,8 +273,11 @@ $main_alert = $alerts[0];
                     </div>
                 </div>
                 
-                <div class="info-block" style="border-left-color: var(--warning);">
-                    <div class="info-title"><i class="fas fa-calendar-check"></i> Регламент проверок</div>
+                <div class="info-card" style="background: var(--card-bg); border-radius: 12px; padding: 16px; border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                    <div class="info-header" style="display: flex; align-items: center; gap: 8px; color: var(--warning); margin-bottom: 12px;">
+                        <i class="fas fa-calendar-check"></i>
+                        <h3 style="font-size: 16px; margin: 0;">Регламент проверок</h3>
+                    </div>
                     <div class="info-content">
                         • Ежесменный контроль оборудования<br>
                         • Еженедельные лабораторные анализы<br>
@@ -277,8 +287,11 @@ $main_alert = $alerts[0];
                     </div>
                 </div>
                 
-                <div class="info-block" style="border-left-color: var(--accent);">
-                    <div class="info-title"><i class="fas fa-file-alt"></i> Необходимая документация</div>
+                <div class="info-card" style="background: var(--card-bg); border-radius: 12px; padding: 16px; border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                    <div class="info-header" style="display: flex; align-items: center; gap: 8px; color: var(--accent); margin-bottom: 12px;">
+                        <i class="fas fa-file-alt"></i>
+                        <h3 style="font-size: 16px; margin: 0;">Необходимая документация</h3>
+                    </div>
                     <div class="info-content">
                         • Журнал входного контроля сырья<br>
                         • Протоколы лабораторных исследований<br>
@@ -457,8 +470,11 @@ $main_alert = $alerts[0];
                     if (!empty($critical_issues)):
                     ?>
                         <?php if (!empty($pending_analysis_batches)): ?>
-                        <div class="info-block" style="border-left-color: var(--warning);">
-                            <div class="info-title">Партии, требующие лабораторного анализа</div>
+                        <div class="info-card" style="border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                            <div class="info-header" style="display: flex; align-items: center; gap: 8px; color: var(--warning); margin-bottom: 12px;">
+                                <i class="fas fa-vial"></i>
+                                <h3 style="font-size: 16px; margin: 0;">Партии, требующие лабораторного анализа</h3>
+                            </div>
                             <div class="info-content">
                                 <?php foreach ($pending_analysis_batches as $b): ?>
                                 <div>
@@ -477,8 +493,11 @@ $main_alert = $alerts[0];
                         <?php endif; ?>
                         
                         <?php if (!empty($brake_reasons)): ?>
-                        <div class="info-block" style="border-left-color: var(--danger);">
-                            <div class="info-title">Анализ брака</div>
+                        <div class="info-card" style="border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                            <div class="info-header" style="display: flex; align-items: center; gap: 8px; color: var(--danger); margin-bottom: 12px;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <h3 style="font-size: 16px; margin: 0;">Анализ брака</h3>
+                            </div>
                             <?php foreach ($brake_reasons as $r): ?>
                                 <div class="info-content"><strong><?= htmlspecialchars($r['reason']) ?>:</strong> <?= $r['count'] ?> случаев</div>
                             <?php endforeach; ?>
@@ -522,8 +541,11 @@ $main_alert = $alerts[0];
                         <?php endif; ?>
                         
                         <?php if (!empty($expiring_batches)): ?>
-                        <div class="info-block" style="border-left-color: var(--warning);">
-                            <div class="info-title">Партии с истекающим сроком годности</div>
+                        <div class="info-card" style="border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                            <div class="info-header" style="display: flex; align-items: center; gap: 8px; color: var(--warning); margin-bottom: 12px;">
+                                <i class="fas fa-calendar-exclamation"></i>
+                                <h3 style="font-size: 16px; margin: 0;">Партии с истекающим сроком годности</h3>
+                            </div>
                             <div class="info-content">
                                 <?php foreach ($expiring_batches as $b): ?>
                                 <div>Партия <?= htmlspecialchars($b['batch_number']) ?> — осталось <?= $b['days_left'] ?> дн.</div>
@@ -548,8 +570,11 @@ $main_alert = $alerts[0];
                             
                             $border_color = $is_expired ? 'var(--danger)' : ($days_left <= 7 ? 'var(--warning)' : 'var(--accent)');
                         ?>
-                        <div class="info-block" style="border-left-color: <?= $border_color ?>;">
-                            <div class="info-title"><?= htmlspecialchars($src['name']) ?></div>
+                        <div class="info-card" style="border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                            <div class="info-header" style="display: flex; align-items: center; gap: 8px; color: <?= $border_color ?>; margin-bottom: 12px;">
+                                <i class="fas fa-water"></i>
+                                <h3 style="font-size: 16px; margin: 0;"><?= htmlspecialchars($src['name']) ?></h3>
+                            </div>
                             <div class="info-content">
                                 Санзаключение №<?= htmlspecialchars($src['sanitary_conclusion_number']) ?> 
                                 (до <?= date('d.m.Y', strtotime($src['sanitary_conclusion_valid_until'])) ?>)<br>
@@ -562,7 +587,7 @@ $main_alert = $alerts[0];
                         <?php endif; ?>
                         
                     <?php else: ?>
-                        <div class="info-block" style="border-left-color: var(--success);">
+                        <div class="info-card" style="border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
                             <div class="info-content" style="color: var(--success);">
                                 <i class="fas fa-check-circle"></i> Критических ситуаций не обнаружено. Все процессы соответствуют требованиям качества.
                             </div>
@@ -573,8 +598,11 @@ $main_alert = $alerts[0];
                 <!-- Предупреждение о санитарных заключениях -->
                 <div class="section">
                     <div class="section-title"><i class="fas fa-exclamation-circle"></i> Важные предупреждения</div>
-                    <div class="info-block" style="border-left-color: var(--warning);">
-                        <div class="info-title">Санитарные заключения</div>
+                    <div class="info-card" style="border: 1px solid var(--border); box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+                        <div class="info-header" style="display: flex; align-items: center; gap: 8px; color: var(--warning); margin-bottom: 12px;">
+                            <i class="fas fa-file-contract"></i>
+                            <h3 style="font-size: 16px; margin: 0;">Санитарные заключения</h3>
+                        </div>
                         <div class="info-content">
                             <p>Обратите внимание: санитарные заключения на источники воды требуют регулярного продления!</p>
                             <?php

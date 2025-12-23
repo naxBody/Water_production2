@@ -200,8 +200,23 @@ $recent_shipments = $pdo->query("
         input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: #142c45; color: var(--text); }
         .btn { background: var(--accent-dark); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
         .btn:hover { opacity: 0.9; }
+        .btn i { font-size: 14px; }
         .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; }
         .info-row > div { flex: 1; min-width: 200px; }
+        
+        /* Стили для кнопок управления формой */
+        .form-controls { display: flex; gap: 15px; margin-top: 20px; }
+        .form-controls .btn { flex: 1; justify-content: center; }
+        
+        /* Улучшенный дизайн для формы отгрузки */
+        .form-container { background: var(--card-bg); padding: 24px; border-radius: 16px; margin: 24px 0; border: 1px solid var(--border); }
+        
+        /* Responsive дизайн для кнопок */
+        @media (max-width: 768px) {
+            .form-row { flex-direction: column; gap: 15px; }
+            .form-controls { flex-direction: column; }
+            .info-row { flex-direction: column; }
+        }
 
         table { width: 100%; border-collapse: collapse; margin-top: 16px; }
         th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid var(--border); }
@@ -292,7 +307,6 @@ $recent_shipments = $pdo->query("
                         <div class="form-group">
                             <label for="waybill_number">Номер ТТН *</label>
                             <input type="text" name="waybill_number" id="waybill_number" required placeholder="Например: ТТН-2025-0001">
-                            <button type="button" class="btn" onclick="generateWaybillNumber()" style="margin-top: 8px; background: #4caf50; padding: 8px 16px; font-size: 14px;"><i class="fas fa-magic"></i> Сгенерировать номер</button>
                         </div>
                     </div>
 
@@ -328,10 +342,27 @@ $recent_shipments = $pdo->query("
                         <textarea name="notes" id="notes" placeholder="Дополнительная информация об отгрузке" rows="2"></textarea>
                     </div>
 
-                    <input type="hidden" name="batch_number" id="hidden_batch_number">
-                    <input type="hidden" name="csrf_token" value="<?= generateCSRFToken() ?>">
-                    <button type="submit" class="btn"><i class="fas fa-truck"></i> Оформить отгрузку</button>
-                    <button type="button" class="btn" onclick="clearForm()" style="background: #f44336; margin-left: 10px;"><i class="fas fa-eraser"></i> Очистить форму</button>
+                    <!-- Кнопки управления -->
+                    <div class="form-controls">
+                        <button type="button" class="btn" onclick="generateWaybillNumber()" style="background: #4caf50;">
+                            <i class="fas fa-magic"></i> Сгенерировать ТТН
+                        </button>
+                        <input type="hidden" name="batch_number" id="hidden_batch_number">
+                        <input type="hidden" name="csrf_token" value="<?= generateCSRFToken() ?>">
+                        <button type="submit" class="btn">
+                            <i class="fas fa-truck"></i> Оформить отгрузку
+                        </button>
+                        <button type="button" class="btn" onclick="clearForm()" style="background: #f44336;">
+                            <i class="fas fa-eraser"></i> Очистить
+                        </button>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="notes">Примечания</label>
+                        <textarea name="notes" id="notes" placeholder="Дополнительная информация об отгрузке" rows="2"></textarea>
+                    </div>
+
+
                 </form>
             <?php endif; ?>
         </div>
@@ -461,13 +492,22 @@ $recent_shipments = $pdo->query("
                 document.getElementById('info-total').textContent = total;
                 
                 document.getElementById('batch-info').style.display = 'block';
+                
+                // Автоматически генерируем номер ТТН при выборе партии
+                setTimeout(generateWaybillNumber, 100);
+                
+                // Автоматически устанавливаем максимальное количество бутылок
+                bottlesInput.value = remaining;
+                calculateVolume(bottlesInput);
             } else {
                 hint.textContent = '';
                 bottlesInput.max = '';
                 bottlesInput.placeholder = 'Введите количество';
+                bottlesInput.value = '';
                 hiddenBatch.value = '';
                 
                 document.getElementById('batch-info').style.display = 'none';
+                document.getElementById('volume-calculation').style.display = 'none';
             }
         }
         
@@ -664,6 +704,13 @@ $recent_shipments = $pdo->query("
         function generateWaybillNumber() {
             const today = new Date();
             const year = today.getFullYear();
+            
+            // Проверяем, есть ли уже введенный номер ТТН
+            const currentWaybill = document.getElementById('waybill_number').value;
+            if (currentWaybill && currentWaybill.startsWith(`ТТН-${year}-`)) {
+                // Если уже есть номер за текущий год, не перезаписываем
+                return;
+            }
 
             // Получаем существующие номера ТТН для определения следующего номера
             const existingWaybills = [];
@@ -693,6 +740,8 @@ $recent_shipments = $pdo->query("
         }
 
         // Функция экспорта отгрузок в CSV
+        function exportShipments() {
+            const table = document.getElementById('shipments-table');
             const rows = table.querySelectorAll('tbody tr');
             let csv = 'Партия;Клиент;Марка;Объем;Количество;ТТН;Дата;Ответственный;Примечания\n';
             

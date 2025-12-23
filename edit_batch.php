@@ -28,7 +28,7 @@ if (!$batch_id) {
 }
 
 // Получение информации о партии
-$batch = $pdo->prepare("
+$stmt = $pdo->prepare("
     SELECT b.*, wb.name AS brand_name, bt.volume_l, bt.material, pl.name AS line_name,
            tw.odor, tw.taste, tw.transparency, tw.color, tw.ph, tw.hardness_mmol,
            tw.dry_residue_mg_l, tw.iron_mg_l, tw.nitrates_mg_l, tw.fluorides_mg_l,
@@ -40,7 +40,9 @@ $batch = $pdo->prepare("
     JOIN production_lines pl ON b.production_line_id = pl.id
     JOIN treated_water_tests tw ON b.treated_test_id = tw.id
     WHERE b.id = ?
-")->execute([$batch_id])->fetch();
+");
+$stmt->execute([$batch_id]);
+$batch = $stmt->fetch();
 
 if (!$batch || $batch['status'] !== 'Брак') {
     header('Location: index.php');
@@ -64,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message_type = 'success';
             
             // Обновляем информацию о партии
-            $batch = $pdo->prepare("
+            $stmt_update = $pdo->prepare("
                 SELECT b.*, wb.name AS brand_name, bt.volume_l, bt.material, pl.name AS line_name,
                        tw.odor, tw.taste, tw.transparency, tw.color, tw.ph, tw.hardness_mmol,
                        tw.dry_residue_mg_l, tw.iron_mg_l, tw.nitrates_mg_l, tw.fluorides_mg_l,
@@ -76,7 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 JOIN production_lines pl ON b.production_line_id = pl.id
                 JOIN treated_water_tests tw ON b.treated_test_id = tw.id
                 WHERE b.id = ?
-            ")->execute([$batch_id])->fetch();
+            ");
+            $stmt_update->execute([$batch_id]);
+            $batch = $stmt_update->fetch();
         } else {
             throw new Exception("Некорректный статус");
         }

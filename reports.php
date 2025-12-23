@@ -134,7 +134,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 $row['batch_number'],
                 $row['brand'],
                 $row['volume_l'] . ' л (' . $row['material'] . ')',
-                date('d.m.Y H:i', strtotime($row['bottling_datetime'])),
+                ($row['bottling_datetime'] && $row['bottling_datetime'] !== '0000-00-00 00:00:00') ? date('d.m.Y H:i', strtotime($row['bottling_datetime'])) : 'Н/Д',
                 $row['status'],
                 $row['total_bottles'],
                 $row['remaining_bottles']
@@ -146,8 +146,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
             fputcsv($output, [
                 $row['batch_number'],
                 $row['brand'],
-                date('d.m.Y', strtotime($row['bottling_datetime'])),
-                date('d.m.Y', strtotime($row['analysis_date'])),
+                ($row['bottling_datetime'] && $row['bottling_datetime'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($row['bottling_datetime'])) : 'Н/Д',
+                ($row['analysis_date'] && $row['analysis_date'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($row['analysis_date'])) : 'Н/Д',
                 $row['reason']
             ], ';');
         }
@@ -158,8 +158,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                 $row['batch_number'],
                 $row['brand'],
                 $row['volume_l'] . ' л (' . $row['material'] . ')',
-                date('d.m.Y', strtotime($row['bottling_datetime'])),
-                date('d.m.Y', strtotime($row['expiry_date'])),
+                ($row['bottling_datetime'] && $row['bottling_datetime'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($row['bottling_datetime'])) : 'Н/Д',
+                ($row['expiry_date'] && $row['expiry_date'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($row['expiry_date'])) : 'Н/Д',
                 $row['remaining_bottles']
             ], ';');
         }
@@ -167,7 +167,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         fputcsv($output, ['Дата анализа', 'Источник', 'Марка', 'pH', 'Жёсткость', 'Сухой остаток', 'Железо', 'Нитраты', 'Фториды', 'ОМЧ', 'Дрожжи и плесени', 'Колиформные бактерии', 'Термотолерантные колиформы', 'Pseudomonas', 'Качество'], ';');
         foreach ($journal_data as $row) {
             fputcsv($output, [
-                date('d.m.Y H:i', strtotime($row['tested_at'])),
+                ($row['tested_at'] && $row['tested_at'] !== '0000-00-00 00:00:00') ? date('d.m.Y H:i', strtotime($row['tested_at'])) : 'Н/Д',
                 $row['source_name'],
                 $row['brand_name'] ?? 'Н/Д',
                 $row['ph'],
@@ -191,7 +191,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         fputcsv($output, ['Дата отгрузки', 'Партия', 'Марка', 'Клиент', 'Количество', 'Номер накладной'], ';');
         foreach ($journal_data as $row) {
             fputcsv($output, [
-                date('d.m.Y', strtotime($row['shipment_date'])),
+                ($row['shipment_date'] && $row['shipment_date'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($row['shipment_date'])) : 'Н/Д',
                 $row['batch_number'],
                 $row['brand'],
                 $row['customer'],
@@ -398,40 +398,81 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
 
         
 
-        <!-- Паспорт качества -->
-        <div class="report-sections">
-            <div class="section">
-                <h2 class="section-title"><i class="fas fa-file-alt"></i> Паспорт качества</h2>
-                <p>Создайте официальный паспорт качества для любой партии, готовой к реализации.</p>
-                <div style="margin-top: 16px;">
-                    <label for="batch_select">Выберите партию:</label>
-                    <select id="batch_select">
-                        <option value="">-- Выберите партию --</option>
-                        <?php foreach ($good_batches as $b): ?>
-                            <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['batch_number']) ?> — <?= htmlspecialchars($b['brand']) ?> (<?= date('d.m.Y', strtotime($b['bottling_datetime'])) ?>)</option>
-                        <?php endforeach; ?>
-                    </select>
+        <!-- Статистика -->
+        <div class="section" style="margin-bottom: 24px;">
+            <h2 class="section-title"><i class="fas fa-chart-line"></i> Общая статистика</h2>
+            <?php
+            // Подсчет статистики
+            $stats = [
+                'total_batches' => $pdo->query("SELECT COUNT(*) FROM batches")->fetchColumn(),
+                'good_batches' => $pdo->query("SELECT COUNT(*) FROM batches WHERE status IN ('Годна к реализации', 'Частично отгружена', 'Полностью реализована')")->fetchColumn(),
+                'rejected_batches' => $pdo->query("SELECT COUNT(*) FROM batches WHERE status = 'Брак'")->fetchColumn(),
+                'in_stock' => $pdo->query("SELECT SUM(remaining_bottles) FROM batches WHERE remaining_bottles > 0")->fetchColumn(),
+                'total_shipped' => $pdo->query("SELECT SUM(bottles_shipped) FROM shipments")->fetchColumn(),
+                'active_clients' => $pdo->query("SELECT COUNT(DISTINCT client_id) FROM shipments")->fetchColumn()
+            ];
+            ?>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-top: 16px;">
+                <div style="background: rgba(129, 199, 132, 0.15); padding: 16px; border-radius: 10px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: var(--success);"><?= $stats['total_batches'] ?></div>
+                    <div style="color: var(--text-secondary); font-size: 14px;">Всего партий</div>
                 </div>
-                <div style="margin-top: 20px;">
-                    <button id="generatePassport" class="btn btn-pdf" disabled>
-                        <i class="fas fa-print"></i> Распечатать паспорт (HTML)
-                    </button>
+                <div style="background: rgba(79, 195, 247, 0.15); padding: 16px; border-radius: 10px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: var(--accent);"><?= $stats['good_batches'] ?></div>
+                    <div style="color: var(--text-secondary); font-size: 14px;">Годных партий</div>
+                </div>
+                <div style="background: rgba(244, 67, 54, 0.15); padding: 16px; border-radius: 10px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #f44336;"><?= $stats['rejected_batches'] ?></div>
+                    <div style="color: var(--text-secondary); font-size: 14px;">Брак</div>
+                </div>
+                <div style="background: rgba(255, 193, 7, 0.15); padding: 16px; border-radius: 10px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #ffc107;"><?= number_format($stats['in_stock'], 0, '', ' ') ?></div>
+                    <div style="color: var(--text-secondary); font-size: 14px;">В наличии</div>
+                </div>
+                <div style="background: rgba(156, 39, 176, 0.15); padding: 16px; border-radius: 10px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #9c27b0;"><?= number_format($stats['total_shipped'], 0, '', ' ') ?></div>
+                    <div style="color: var(--text-secondary); font-size: 14px;">Отгружено</div>
+                </div>
+                <div style="background: rgba(33, 150, 243, 0.15); padding: 16px; border-radius: 10px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #2196f3;"><?= $stats['active_clients'] ?></div>
+                    <div style="color: var(--text-secondary); font-size: 14px;">Клиентов</div>
                 </div>
             </div>
+        </div>
 
-            <!-- Журналы -->
-            <div class="section">
-                <h2 class="section-title"><i class="fas fa-clipboard-list"></i> Журналы</h2>
-                <div class="tabs">
-                    <div class="tab <?= $journal_type === 'production' ? 'active' : '' ?>" data-tab="production">Производство</div>
-                    <div class="tab <?= $journal_type === 'rejection' ? 'active' : '' ?>" data-tab="rejection">Брак</div>
-                    <div class="tab <?= $journal_type === 'stock' ? 'active' : '' ?>" data-tab="stock">Остатки</div>
-                    <div class="tab <?= $journal_type === 'quality' ? 'active' : '' ?>" data-tab="quality">Качество</div>
-                    <div class="tab <?= $journal_type === 'shipment' ? 'active' : '' ?>" data-tab="shipment">Отгрузки</div>
-                </div>
-                <a href="reports.php?journal=<?= $journal_type ?>&export=csv" class="btn btn-csv" style="margin-top: 12px;">
-                    <i class="fas fa-file-csv"></i> Экспорт в CSV
-                </a>
+        <!-- Паспорт качества (вверху) -->
+        <div class="section" style="margin-bottom: 24px;">
+            <h2 class="section-title"><i class="fas fa-file-alt"></i> Паспорт качества</h2>
+            <p>Создайте официальный паспорт качества для любой партии, готовой к реализации.</p>
+            <div style="margin-top: 16px;">
+                <label for="batch_select">Выберите партию:</label>
+                <select id="batch_select">
+                    <option value="">-- Выберите партию --</option>
+                    <?php foreach ($good_batches as $b): ?>
+                        <option value="<?= $b['id'] ?>"><?= htmlspecialchars($b['batch_number']) ?> — <?= htmlspecialchars($b['brand']) ?> (<?= date('d.m.Y', strtotime($b['bottling_datetime'])) ?>)</option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div style="margin-top: 20px;">
+                <button id="generatePassport" class="btn btn-pdf">
+                    <i class="fas fa-print"></i> Распечатать паспорт (HTML)
+                </button>
+            </div>
+        </div>
+
+        <!-- Журналы (внизу) -->
+        <div class="section">
+            <h2 class="section-title"><i class="fas fa-clipboard-list"></i> Журналы</h2>
+            <div class="tabs">
+                <div class="tab <?= $journal_type === 'production' ? 'active' : '' ?>" data-tab="production">Производство</div>
+                <div class="tab <?= $journal_type === 'rejection' ? 'active' : '' ?>" data-tab="rejection">Брак</div>
+                <div class="tab <?= $journal_type === 'stock' ? 'active' : '' ?>" data-tab="stock">Остатки</div>
+                <div class="tab <?= $journal_type === 'quality' ? 'active' : '' ?>" data-tab="quality">Качество</div>
+                <div class="tab <?= $journal_type === 'shipment' ? 'active' : '' ?>" data-tab="shipment">Отгрузки</div>
+            </div>
+            <a href="reports.php?journal=<?= $journal_type ?>&export=csv" class="btn btn-csv" style="margin-top: 12px;">
+                <i class="fas fa-file-csv"></i> Экспорт в CSV
+            </a>
                 <?php if (!empty($journal_data)): ?>
                     <div class="scrollable-table">
                     <table style="margin-top: 16px;">
@@ -453,7 +494,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                         <td><?= htmlspecialchars($j['batch_number']) ?></td>
                                         <td><?= htmlspecialchars($j['brand']) ?></td>
                                         <td><?= $j['volume_l'] ?> л (<?= htmlspecialchars($j['material']) ?>)</td>
-                                        <td><?= date('d.m.Y', strtotime($j['bottling_datetime'])) ?></td>
+                                        <td><?= ($j['bottling_datetime'] && $j['bottling_datetime'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($j['bottling_datetime'])) : 'Н/Д' ?></td>
                                         <td><?= htmlspecialchars($j['status']) ?></td>
                                         <td><?= number_format($j['total_bottles'], 0, '', ' ') ?></td>
                                         <td><?= number_format($j['remaining_bottles'], 0, '', ' ') ?></td>
@@ -475,8 +516,8 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                     <tr>
                                         <td><?= htmlspecialchars($j['batch_number']) ?></td>
                                         <td><?= htmlspecialchars($j['brand']) ?></td>
-                                        <td><?= date('d.m.Y', strtotime($j['bottling_datetime'])) ?></td>
-                                        <td><?= date('d.m.Y', strtotime($j['analysis_date'])) ?></td>
+                                        <td><?= ($j['bottling_datetime'] && $j['bottling_datetime'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($j['bottling_datetime'])) : 'Н/Д' ?></td>
+                                        <td><?= ($j['analysis_date'] && $j['analysis_date'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($j['analysis_date'])) : 'Н/Д' ?></td>
                                         <td><?= htmlspecialchars($j['reason']) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -498,8 +539,8 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                                         <td><?= htmlspecialchars($j['batch_number']) ?></td>
                                         <td><?= htmlspecialchars($j['brand']) ?></td>
                                         <td><?= $j['volume_l'] ?> л (<?= htmlspecialchars($j['material']) ?>)</td>
-                                        <td><?= date('d.m.Y', strtotime($j['bottling_datetime'])) ?></td>
-                                        <td><?= date('d.m.Y', strtotime($j['expiry_date'])) ?></td>
+                                        <td><?= ($j['bottling_datetime'] && $j['bottling_datetime'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($j['bottling_datetime'])) : 'Н/Д' ?></td>
+                                        <td><?= ($j['expiry_date'] && $j['expiry_date'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($j['expiry_date'])) : 'Н/Д' ?></td>
                                         <td><?= number_format($j['remaining_bottles'], 0, '', ' ') ?></td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -527,7 +568,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                             <tbody>
                                 <?php foreach ($journal_data as $j): ?>
                                     <tr>
-                                        <td><?= date('d.m.Y H:i', strtotime($j['tested_at'])) ?></td>
+                                        <td><?= ($j['tested_at'] && $j['tested_at'] !== '0000-00-00 00:00:00') ? date('d.m.Y H:i', strtotime($j['tested_at'])) : 'Н/Д' ?></td>
                                         <td><?= htmlspecialchars($j['source_name']) ?></td>
                                         <td><?= htmlspecialchars($j['brand_name'] ?? 'Н/Д') ?></td>
                                         <td><?= $j['ph'] ?></td>
@@ -569,7 +610,7 @@ if (isset($_GET['passport']) && $_GET['passport'] === 'html') {
                             <tbody>
                                 <?php foreach ($journal_data as $j): ?>
                                     <tr>
-                                        <td><?= date('d.m.Y', strtotime($j['shipment_date'])) ?></td>
+                                        <td><?= ($j['shipment_date'] && $j['shipment_date'] !== '0000-00-00 00:00:00') ? date('d.m.Y', strtotime($j['shipment_date'])) : 'Н/Д' ?></td>
                                         <td><?= htmlspecialchars($j['batch_number']) ?></td>
                                         <td><?= htmlspecialchars($j['brand']) ?></td>
                                         <td><?= htmlspecialchars($j['customer']) ?></td>
